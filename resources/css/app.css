@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../../app/**/*.php';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* LivityICT orange (primary) — sampled from the logo: #F7941D */
+    --color-brand-50: #fff7ec;
+    --color-brand-100: #feebd0;
+    --color-brand-200: #fdd49f;
+    --color-brand-300: #fbb862;
+    --color-brand-400: #f9a43c;
+    --color-brand-500: #f7941d;
+    --color-brand-600: #e07a0b;
+    --color-brand-700: #b95e0b;
+    --color-brand-800: #934a10;
+    --color-brand-900: #773e11;
+    --color-brand-950: #431f05;
+
+    /* LivityICT green (secondary) — sampled from the logo: #00A14B */
+    --color-accent-50: #ebfbf1;
+    --color-accent-100: #cff5dd;
+    --color-accent-200: #a3ebc1;
+    --color-accent-300: #67da9c;
+    --color-accent-400: #2cc273;
+    --color-accent-500: #00a14b;
+    --color-accent-600: #008a40;
+    --color-accent-700: #006e35;
+    --color-accent-800: #05572d;
+    --color-accent-900: #064827;
+    --color-accent-950: #012814;
+}
+
+@layer base {
+    [x-cloak] { display: none !important; }
+    html { -webkit-tap-highlight-color: transparent; }
+}
+
+@layer components {
+    .btn, .btn-primary, .btn-accent, .btn-secondary, .btn-danger {
+        @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    }
+    .btn-primary { @apply bg-brand-500 text-white hover:bg-brand-600 focus-visible:ring-brand-500; }
+    .btn-accent { @apply bg-accent-500 text-white hover:bg-accent-600 focus-visible:ring-accent-500; }
+    .btn-secondary { @apply bg-white text-gray-700 ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus-visible:ring-brand-500; }
+    .btn-danger { @apply bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500; }
+    .btn-sm { @apply px-3 py-1.5 text-xs; }
+
+    .form-label { @apply mb-1 block text-sm font-medium text-gray-700; }
+    .form-input {
+        @apply block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500
+            disabled:bg-gray-50 disabled:text-gray-500;
+    }
+    .form-check { @apply size-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500; }
+    .form-help { @apply mt-1 text-xs text-gray-500; }
+    .form-error { @apply mt-1 text-xs font-medium text-red-600; }
+
+    .card { @apply rounded-xl border border-gray-200 bg-white shadow-sm; }
+    .card-header { @apply flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-4; }
+    .card-title { @apply text-base font-semibold text-gray-900; }
+    .card-body { @apply p-5; }
+
+    .table-wrap { @apply overflow-x-auto; }
+    .table { @apply min-w-full divide-y divide-gray-200 text-sm; }
+    .table thead th { @apply bg-gray-50 px-4 py-3 text-left text-xs font-semibold tracking-wide text-gray-500 uppercase whitespace-nowrap; }
+    .table tbody td { @apply px-4 py-3 align-top text-gray-700; }
+    .table tbody tr { @apply hover:bg-brand-50/40; }
+    .table tbody { @apply divide-y divide-gray-100; }
+
+    .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset; }
+
+    .dl-grid { @apply grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2; }
+    .dl-grid dt { @apply text-xs font-medium tracking-wide text-gray-500 uppercase; }
+    .dl-grid dd { @apply mt-1 text-sm text-gray-900; }
+
+    .nav-link {
+        @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-300 transition hover:bg-white/5 hover:text-white;
+    }
+    .nav-link.active { @apply bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30; }
+    .nav-section { @apply mt-6 mb-2 px-3 text-[11px] font-semibold tracking-wider text-gray-500 uppercase; }
+}

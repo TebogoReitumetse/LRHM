@@ -104,6 +104,7 @@ class UserController extends Controller
             'job_title' => ['nullable', 'string', 'max:150'],
             'role' => ['required', Rule::in($roles)],
             'employment_type' => ['required', 'in:employee,contractor'],
+            'employment_start_date' => ['nullable', 'date'],
             'can_view_contract' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'password' => ['nullable', Password::defaults()],
@@ -111,7 +112,7 @@ class UserController extends Controller
         $data['can_view_contract'] = $request->boolean('can_view_contract');
         $data['is_active'] = $request->boolean('is_active');
 
-        return array_filter($data, fn ($v) => $v !== null) + ['email' => null, 'phone' => null, 'department_id' => null, 'job_title' => null];
+        return array_filter($data, fn ($v) => $v !== null) + ['email' => null, 'phone' => null, 'department_id' => null, 'job_title' => null, 'employment_start_date' => null];
     }
 
     /** Managers handle staff accounts; only the administrator can create Director / Admin accounts. */

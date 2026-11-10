@@ -140,6 +140,37 @@
         </div>
 
         <div class="space-y-6">
+            {{-- Applicant's balance for this category --}}
+            @if ($balance?->tracked())
+                @php
+                    $counts = in_array($a->status, [LeaveStatus::Approved, ...\App\Services\LeaveBalanceService::PENDING], true);
+                    $after = $balance->availableAfterPending() - ($counts ? (float) $a->working_days : 0);
+                @endphp
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">{{ $a->user_id === $me->id ? 'Your' : 'Employee' }} {{ $balance->category->name }} balance</h2>
+                    </div>
+                    <div class="card-body space-y-3 text-sm">
+                        <dl class="grid grid-cols-2 gap-2">
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">Entitlement</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($balance->entitlement) }} days</dd></div>
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">Already taken</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($balance->taken) }} days</dd></div>
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">Other pending</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($balance->pending) }} days</dd></div>
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">This application</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days((float) $a->working_days) }} days</dd></div>
+                        </dl>
+                        <div @class(['rounded-lg px-3 py-2 ring-1', 'bg-red-50 text-red-800 ring-red-200' => $after < 0, 'bg-accent-50 text-accent-800 ring-accent-200' => $after >= 0])>
+                            @if ($counts)
+                                Left after this application: <strong class="tabular-nums">{{ \App\Services\LeaveBalance::days($after) }} days</strong>
+                                @if ($after < 0)<span class="block text-xs">This exceeds the entitlement by {{ \App\Services\LeaveBalance::days(-$after) }} days.</span>@endif
+                            @else
+                                Available: <strong class="tabular-nums">{{ \App\Services\LeaveBalance::days($balance->availableAfterPending()) }} days</strong>
+                                <span class="block text-xs">This application does not count against the balance ({{ strtolower($a->status->label()) }}).</span>
+                            @endif
+                        </div>
+                        <p class="text-xs text-gray-400">Current cycle {{ $balance->cycleLabel() }}, working days.</p>
+                    </div>
+                </div>
+            @endif
+
             {{-- Manager actions --}}
             @if ($canReview)
                 <div class="card ring-2 ring-brand-200" x-data="{ mode: 'forward' }">

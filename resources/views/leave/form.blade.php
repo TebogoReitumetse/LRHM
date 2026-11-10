@@ -84,6 +84,28 @@
                         </template>
                         <p x-show="error" x-text="error" class="form-error sm:col-span-2"></p>
 
+                        {{-- Balance for the selected category (current cycle, not counting this application) --}}
+                        <div class="sm:col-span-2" x-data="{ balances: {{ Js::from($balanceMap) }} }" x-show="balances[category]" x-cloak>
+                            <template x-if="balances[category]">
+                                <div class="rounded-lg px-4 py-3 text-sm ring-1"
+                                     :class="days > balances[category].available ? 'bg-red-50 text-red-800 ring-red-200' : 'bg-gray-50 text-gray-700 ring-gray-200'">
+                                    <div class="flex flex-wrap gap-x-6 gap-y-1">
+                                        <span>Entitlement: <strong x-text="balances[category].entitlement"></strong></span>
+                                        <span>Taken: <strong x-text="balances[category].taken"></strong></span>
+                                        <span>Pending: <strong x-text="balances[category].pending"></strong></span>
+                                        <span>Available: <strong x-text="balances[category].available"></strong></span>
+                                        <span>After this application: <strong x-text="Math.round((balances[category].available - days) * 10) / 10"></strong></span>
+                                    </div>
+                                    <p class="mt-1 text-xs opacity-80">
+                                        Working days in your current cycle (<span x-text="balances[category].cycle"></span>). Available already allows for your other pending applications.
+                                    </p>
+                                    <p x-show="days > balances[category].available" class="mt-2 text-xs font-semibold">
+                                        This application is more than your available balance. You can still submit it, but management may decline it or treat the extra days as unpaid leave.
+                                    </p>
+                                </div>
+                            </template>
+                        </div>
+
                         <x-field label="Reason / notes" name="reason" class="sm:col-span-2">
                             <textarea id="reason" name="reason" rows="3" class="form-input" :required="selected?.reason"
                                       placeholder="Any information required by the leave category or company policy">{{ old('reason', $application->reason) }}</textarea>

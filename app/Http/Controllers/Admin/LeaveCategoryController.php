@@ -42,6 +42,8 @@ class LeaveCategoryController extends Controller
             'name' => ['required', 'string', 'max:100', Rule::unique('leave_categories')->ignore($c)],
             'description' => ['nullable', 'string', 'max:500'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
+            'entitlement_days' => ['nullable', 'numeric', 'min:0', 'max:365'],
+            'entitlement_cycle_months' => ['nullable', 'integer', 'min:1', 'max:120'],
         ]);
 
         return $data + [
@@ -49,6 +51,9 @@ class LeaveCategoryController extends Controller
             'requires_reason' => $request->boolean('requires_reason'),
             'is_active' => $request->boolean('is_active'),
             'sort_order' => (int) ($data['sort_order'] ?? 0),
+            'entitlement_days' => $data['entitlement_days'] ?? null,
+            'entitlement_cycle_months' => (int) ($data['entitlement_cycle_months'] ?? 12),
+            'entitlement_for_contractors' => $request->boolean('entitlement_for_contractors'),
         ];
     }
 }

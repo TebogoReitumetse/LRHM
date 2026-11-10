@@ -23,6 +23,9 @@
                         <option value="contractor" @selected(old('employment_type', $user->employment_type) === 'contractor')>Contractor</option>
                     </select>
                 </x-field>
+                <x-field label="Employment start date" name="employment_start_date" help="Leave cycles (annual, sick, family responsibility) run from this date. If blank, cycles start on 1 January.">
+                    <input type="date" name="employment_start_date" value="{{ old('employment_start_date', $user->employment_start_date?->toDateString()) }}" class="form-input">
+                </x-field>
             </div>
         </div>
         <div class="card self-start">

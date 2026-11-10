@@ -61,7 +61,10 @@ Nobody can act on their own leave application. If the applicant is the only Mana
 ## Business rules
 
 - Working days exclude weekends and public holidays (maintained under *Public holidays*; SA holidays for 2026 and 2027 are seeded).
-- No leave balances or entitlements are calculated until LivityICT approves the rules and opening balances.
+- Leave balances follow the BCEA minimums for a 5-day week: **annual** 15 working days (21 consecutive days) per 12-month cycle, **sick** 30 days per 36-month cycle, **family responsibility** 3 days per year. Entitlements and cycle lengths are set per category under *Leave categories* (blank = not tracked); contractors are excluded unless enabled per category.
+- Cycles start on each user's *Employment start date* (set on the user form), or 1 January of the year the account was created if none is recorded. Leave counts against the cycle in which it starts.
+- *Taken* = approved leave (including approved leave still to come); *pending* = submitted, under review or returned. Applying for more than the available balance shows a warning but is not blocked. Opening balances, carry-over and the first-6-months sick leave rule are not yet handled.
+- Employees see their balances on the dashboard and on the application form; managers, directors and administrators see everyone under *Leave balances* (with CSV export). Administrators see balances only, not individual applications.
 - Absence records never trigger warnings, salary deductions or disciplinary action. Only management records an outcome after review.
 - Contract reminders are administrative only. Contracts are never renewed, ended or changed automatically. Renewals create a new version and keep the old one in the history.
 

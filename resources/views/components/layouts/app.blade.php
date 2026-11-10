@@ -37,6 +37,7 @@
         $sections['Leave management'] = [
             $nav('approvals.index', $u->isDirector() ? 'Awaiting my decision' : 'Awaiting my review', 'check-badge', 'approvals.*', $pendingQueue ?: null),
             $nav('register.index', 'Leave register', 'clipboard', 'register.*'),
+            $nav('balances.index', 'Leave balances', 'pie', 'balances.*'),
             $nav('reports.index', 'Reports', 'chart', 'reports.*'),
             $nav('absences.index', 'Absence records', 'user-minus', 'absences.*'),
         ];
@@ -51,6 +52,9 @@
     if (Gate::allows('manage-users')) {
         $admin[] = $nav('admin.users.index', 'Users', 'users', 'admin.users.*');
         $admin[] = $nav('admin.departments.index', 'Departments', 'building', 'admin.departments.*');
+    }
+    if ($u->isAdmin()) {
+        $admin[] = $nav('balances.index', 'Leave balances', 'pie', 'balances.*');
     }
     if (Gate::allows('manage-settings')) {
         $admin[] = $nav('admin.leave-categories.index', 'Leave categories', 'tag', 'admin.leave-categories.*');

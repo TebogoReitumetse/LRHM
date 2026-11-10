@@ -12,6 +12,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ContractController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LeaveApplicationController;
+use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveRegisterController;
 use App\Http\Controllers\LeaveReviewController;
 use App\Http\Controllers\NotificationController;
@@ -56,6 +57,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/register/export/{format}', [LeaveRegisterController::class, 'export'])->whereIn('format', ['csv', 'pdf', 'print'])->name('register.export');
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
         Route::get('/reports/run', [ReportController::class, 'run'])->name('reports.run');
+    });
+
+    Route::middleware('can:view-leave-balances')->group(function () {
+        Route::get('/balances', [LeaveBalanceController::class, 'index'])->name('balances.index');
+        Route::get('/balances/export', [LeaveBalanceController::class, 'export'])->name('balances.export');
+        Route::get('/balances/{user}', [LeaveBalanceController::class, 'show'])->whereNumber('user')->name('balances.show');
     });
 
     Route::middleware('can:manage-absences')->group(function () {

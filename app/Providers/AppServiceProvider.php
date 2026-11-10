@@ -27,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('review-leave', fn (User $u) => $u->isManager());
         Gate::define('decide-leave', fn (User $u) => $u->isDirector());
         Gate::define('view-leave-register', fn (User $u) => $u->isManagement());
+        Gate::define('view-leave-balances', fn (User $u) => $u->hasRole(Role::Manager, Role::Director, Role::Admin));
         Gate::define('manage-absences', fn (User $u) => $u->isManagement());
 
         // Contract management: Manager only (Director access excluded in Phase 2).

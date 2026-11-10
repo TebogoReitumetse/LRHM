@@ -85,3 +85,39 @@
     .nav-link.active { @apply bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/30; }
     .nav-section { @apply mt-6 mb-2 px-3 text-[11px] font-semibold tracking-wider text-gray-500 uppercase; }
 }
+
+/* Dashboard holiday calendar: month heading and dates animate in from the direction of travel. */
+.cal-next { --cal-from: 28px; }
+.cal-prev { --cal-from: -28px; }
+
+.cal-title { animation: cal-title-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.cal-day {
+    animation: cal-day-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 12ms);
+}
+
+@keyframes cal-title-in {
+    from { opacity: 0; transform: translateX(var(--cal-from, 28px)); filter: blur(6px); letter-spacing: 0.2em; }
+    to { opacity: 1; transform: none; filter: none; letter-spacing: normal; }
+}
+
+@keyframes cal-day-in {
+    from { opacity: 0; transform: translateX(calc(var(--cal-from, 28px) / 2)) scale(0.6); filter: blur(3px); }
+    to { opacity: 1; transform: none; filter: none; }
+}
+
+.cal-strip { scrollbar-width: none; }
+.cal-strip::-webkit-scrollbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .cal-title, .cal-day { animation: none; }
+}
+
+/* White glow keeps plain dates readable where they sit over the dark logo in the background image. */
+.cal-halo { text-shadow: 0 0 2px #fff, 0 0 6px #fff, 0 0 10px rgb(255 255 255 / 0.9); }
+
+/* Glass fades from fully frosted (top-left) to almost clear (bottom-right). */
+.cal-glass {
+    -webkit-mask-image: linear-gradient(135deg, #000 40%, rgb(0 0 0 / 0.1) 85%);
+    mask-image: linear-gradient(135deg, #000 40%, rgb(0 0 0 / 0.1) 85%);
+}

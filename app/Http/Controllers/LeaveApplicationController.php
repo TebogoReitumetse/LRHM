@@ -6,6 +6,8 @@ use App\Enums\LeaveStatus;
 use App\Models\LeaveApplication;
 use App\Models\LeaveCategory;
 use App\Models\LeaveDocument;
+use App\Services\LeaveBalance;
+use App\Services\LeaveBalanceService;
 use App\Services\LeaveWorkflow;
 use App\Services\WorkingDayCalculator;
 use Carbon\Carbon;
@@ -17,7 +19,11 @@ use Illuminate\Validation\ValidationException;
 
 class LeaveApplicationController extends Controller
 {
-    public function __construct(private WorkingDayCalculator $calendar, private LeaveWorkflow $workflow) {}
+    public function __construct(
+        private WorkingDayCalculator $calendar,
+        private LeaveWorkflow $workflow,
+        private LeaveBalanceService $balances,
+    ) {}
 
     /** The signed-in user's own applications. */
     public function index(Request $request)
@@ -35,6 +41,7 @@ class LeaveApplicationController extends Controller
             'application' => new LeaveApplication(['working_days' => 0]),
             'categories' => LeaveCategory::active()->get(),
             'user' => $request->user()->load('department'),
+            'balanceMap' => $this->balanceMap($request->user()),
         ]);
     }
 
@@ -71,6 +78,8 @@ class LeaveApplicationController extends Controller
         return view('leave.show', [
             'application' => $leave,
             'holidays' => $this->calendar->holidaysBetween($leave->start_date, $leave->end_date),
+            // The applicant's balance for this category, not counting this application.
+            'balance' => $this->balances->forUser($leave->user, $leave->id)->get($leave->leave_category_id),
         ]);
     }
 
@@ -82,6 +91,7 @@ class LeaveApplicationController extends Controller
             'application' => $leave->load('documents'),
             'categories' => LeaveCategory::active()->get(),
             'user' => $request->user()->load('department'),
+            'balanceMap' => $this->balanceMap($request->user(), $leave->id),
         ]);
     }
 
@@ -260,5 +270,19 @@ class LeaveApplicationController extends Controller
         }
 
         return redirect()->route('leave.show', $app)->with('success', 'Application saved as a draft.');
+    }
+
+    /** Tracked balances keyed by category id, for the live check on the application form. */
+    private function balanceMap($user, ?int $excludeApplicationId = null): array
+    {
+        return $this->balances->forUser($user, $excludeApplicationId)
+            ->filter(fn (LeaveBalance $b) => $b->tracked())
+            ->map(fn (LeaveBalance $b) => [
+                'entitlement' => (float) LeaveBalance::days($b->entitlement),
+                'taken' => (float) LeaveBalance::days($b->taken),
+                'pending' => (float) LeaveBalance::days($b->pending),
+                'available' => (float) LeaveBalance::days($b->availableAfterPending()),
+                'cycle' => $b->cycleLabel(),
+            ])->all();
     }
 }

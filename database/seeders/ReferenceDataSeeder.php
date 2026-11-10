@@ -21,18 +21,19 @@ class ReferenceDataSeeder extends Seeder
         // Provisional categories based on the BCEA. Must be confirmed against
         // LivityICT's approved leave policy and existing paper form.
         $categories = [
-            ['Annual Leave', 'Paid annual leave.', false, false],
-            ['Sick Leave', 'Illness or injury. A medical certificate is required in line with company policy.', true, true],
-            ['Family Responsibility Leave', 'Birth or illness of a child, or death of a close family member. Proof may be requested.', false, true],
-            ['Maternity Leave', 'Maternity leave. Supporting documentation required.', true, false],
-            ['Parental Leave', 'Parental, adoption or commissioning parental leave.', true, false],
-            ['Study Leave', 'Examinations or approved study commitments.', true, true],
-            ['Unpaid Leave', 'Leave without pay, subject to Director approval.', false, true],
-            ['Other / Special Leave', 'Any other leave approved under company policy.', false, true],
+            ['Annual Leave', 'Paid annual leave. BCEA minimum: 21 consecutive days (15 working days) per 12-month cycle.', false, false, 15, 12],
+            ['Sick Leave', 'Illness or injury. A medical certificate is required in line with company policy. BCEA: 30 days per 36-month cycle.', true, true, 30, 36],
+            ['Family Responsibility Leave', 'Birth or illness of a child, or death of a close family member. Proof may be requested. BCEA: 3 days per year.', false, true, 3, 12],
+            ['Maternity Leave', 'Maternity leave. Supporting documentation required.', true, false, null, null],
+            ['Parental Leave', 'Parental, adoption or commissioning parental leave.', true, false, null, null],
+            ['Study Leave', 'Examinations or approved study commitments.', true, true, null, null],
+            ['Unpaid Leave', 'Leave without pay, subject to Director approval.', false, true, null, null],
+            ['Other / Special Leave', 'Any other leave approved under company policy.', false, true, null, null],
         ];
-        foreach ($categories as $i => [$name, $desc, $doc, $reason]) {
+        foreach ($categories as $i => [$name, $desc, $doc, $reason, $days, $months]) {
             LeaveCategory::firstOrCreate(['name' => $name], [
                 'description' => $desc, 'requires_document' => $doc, 'requires_reason' => $reason, 'sort_order' => $i + 1,
+                'entitlement_days' => $days, 'entitlement_cycle_months' => $months ?? 12,
             ]);
         }
 

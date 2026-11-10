@@ -19,6 +19,8 @@
         </div>
     </div>
 
+    <x-holiday-calendar :months="$calendar['months']" :holidays="$calendar['holidays']" :upcoming="$calendar['upcoming']" class="mb-8" />
+
     @isset($stats)
         {{-- Management dashboard --}}
         <h2 class="mb-3 text-sm font-semibold tracking-wide text-gray-500 uppercase">Leave overview</h2>
@@ -150,6 +152,20 @@
 
     {{-- Personal section --}}
     @unless ($user->isAdmin())
+        <div class="mt-10 mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">My leave balances</h2>
+            <p class="text-xs text-gray-400">Working days · minimums under the Basic Conditions of Employment Act</p>
+        </div>
+        @if ($myBalances->isEmpty())
+            <div class="card p-5 text-sm text-gray-500">No leave entitlements apply to your account. Days you take will still appear under My leave.</div>
+        @else
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                @foreach ($myBalances as $b)
+                    <x-leave-balance-card :balance="$b" />
+                @endforeach
+            </div>
+        @endif
+
         <h2 class="mt-10 mb-3 text-sm font-semibold tracking-wide text-gray-500 uppercase">My leave</h2>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-1 lg:grid-cols-1">

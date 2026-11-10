@@ -19,7 +19,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name', 'username', 'employee_number', 'department_id', 'job_title', 'email', 'phone',
-        'role', 'employment_type', 'can_view_contract', 'is_active', 'password', 'password_changed_at',
+        'role', 'employment_type', 'employment_start_date', 'can_view_contract', 'is_active', 'password', 'password_changed_at',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -35,6 +35,7 @@ class User extends Authenticatable
             'can_view_contract' => 'boolean',
             'last_login_at' => 'datetime',
             'password_changed_at' => 'datetime',
+            'employment_start_date' => 'date',
         ];
     }
 
@@ -97,6 +98,11 @@ class User extends Authenticatable
     public function isManagement(): bool
     {
         return $this->hasRole(Role::Manager, Role::Director);
+    }
+
+    public function isContractor(): bool
+    {
+        return $this->employment_type === 'contractor';
     }
 
     public function initials(): string

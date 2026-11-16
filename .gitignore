@@ -25,3 +25,6 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local database dumps (contain personal data and password hashes)
+/livity_hrms.sql

@@ -14,9 +14,10 @@
                         <tr>
                             <td class="font-medium whitespace-nowrap">{{ $a->reference }}</td>
                             <td><div class="font-medium text-gray-900">{{ $a->employee_name }}</div><div class="text-xs text-gray-500">{{ $a->department }}</div></td>
-                            <td>{{ $a->category->name }}</td>
+                            <td>{{ $a->leaveTypeLabel() }}</td>
                             <td class="whitespace-nowrap">{{ $a->start_date->format('d M') }} – {{ $a->end_date->format('d M Y') }}</td>
-                            <td class="tabular-nums">{{ (float) $a->working_days }}</td>
+                            <td class="tabular-nums">{{ (float) $a->working_days }}
+                                @if ($a->hasUnpaidDays())<span class="block text-xs text-amber-700">{{ \App\Services\LeaveBalance::days((float) $a->unpaid_days) }} unpaid</span>@endif</td>
                             <td class="whitespace-nowrap" title="{{ $a->submitted_at?->format('d M Y H:i') }}">{{ $a->submitted_at?->diffForHumans() }}</td>
                             <td><x-status :status="$a->status" /></td>
                             <td class="text-right"><a href="{{ route('leave.show', $a) }}" class="btn-primary btn-sm">{{ auth()->user()->isDirector() ? 'Decide' : 'Review' }}</a></td>
@@ -40,7 +41,7 @@
                         <tr class="cursor-pointer" onclick="location.href='{{ route('leave.show', $a) }}'">
                             <td class="font-medium">{{ $a->reference }}</td>
                             <td>{{ $a->employee_name }}</td>
-                            <td>{{ $a->category->name }}</td>
+                            <td>{{ $a->leaveTypeLabel() }}</td>
                             <td class="whitespace-nowrap">{{ $a->returned_at?->diffForHumans() }}</td>
                             <td class="max-w-md truncate text-gray-500">{{ $a->return_reason }}</td>
                         </tr>

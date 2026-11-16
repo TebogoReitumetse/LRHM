@@ -12,7 +12,7 @@
 @endphp
 <x-layouts.app :title="'Leave '.($a->reference ?? 'draft')">
     <x-page-header :title="'Leave application '.($a->reference ?? '(draft)')"
-                   :subtitle="$a->employee_name.' · '.$a->category->name"
+                   :subtitle="$a->employee_name.' · '.$a->leaveTypeLabel()"
                    :back="$a->user_id === $me->id ? route('leave.index') : route('register.index')">
         <x-status :status="$a->status" class="px-3 py-1 text-sm" />
         <a href="{{ route('leave.print', $a) }}" target="_blank" class="btn-secondary"><x-icon name="printer" class="size-4" /> Print</a>
@@ -66,24 +66,49 @@
             @endif
 
             <div class="card">
-                <div class="card-header"><h2 class="card-title">Application details</h2></div>
+                <div class="card-header"><h2 class="card-title">1. Employee Details</h2></div>
                 <div class="card-body">
                     <dl class="dl-grid">
-                        <div><dt>Employee name</dt><dd>{{ $a->employee_name }}</dd></div>
+                        <div><dt>Employee Name</dt><dd>{{ $a->employee_name }}</dd></div>
+                        <div><dt>Employee ID Number</dt><dd>{{ $a->id_number ?? '—' }}</dd></div>
+                        <div><dt>Department/Position</dt><dd>{{ $a->departmentPosition() }}</dd></div>
                         <div><dt>Employee number</dt><dd>{{ $a->employee_number }}</dd></div>
-                        <div><dt>Department / job function</dt><dd>{{ $a->department ?? '—' }}{{ $a->job_title ? ' · '.$a->job_title : '' }}</dd></div>
-                        <div><dt>Leave category</dt><dd>{{ $a->category->name }}</dd></div>
-                        <div><dt>Leave start date</dt><dd>{{ $a->start_date->format('l, d F Y') }}</dd></div>
-                        <div><dt>Leave end date</dt><dd>{{ $a->end_date->format('l, d F Y') }}</dd></div>
-                        <div><dt>Expected return date</dt><dd class="font-semibold text-accent-700">{{ $a->return_date->format('l, d F Y') }}</dd></div>
-                        <div><dt>Working days</dt><dd><span class="text-lg font-bold text-brand-700">{{ (float) $a->working_days }}</span>
-                            @if ($holidays)<span class="text-xs text-gray-500"> (excludes {{ implode(', ', $holidays) }})</span>@endif</dd></div>
-                        <div class="sm:col-span-2"><dt>Reason / notes</dt><dd class="whitespace-pre-line">{{ $a->reason ?: '—' }}</dd></div>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h2 class="card-title">2. Leave Request Details</h2></div>
+                <div class="card-body">
+                    <dl class="dl-grid">
+                        <div class="sm:col-span-2"><dt>Type of Leave</dt><dd class="font-semibold">{{ $a->leaveTypeLabel() }}</dd></div>
+                        <div><dt>Start Date</dt><dd>{{ $a->start_date->format('l, d F Y') }}</dd></div>
+                        <div><dt>End Date</dt><dd>{{ $a->end_date->format('l, d F Y') }}</dd></div>
+                        <div><dt>Total Working Days</dt><dd><span class="text-lg font-bold text-brand-700">{{ (float) $a->working_days }}</span>
+                            @if ($holidays)<span class="text-xs text-gray-500"> (excludes {{ implode(', ', $holidays) }})</span>@endif
+                            @if ($a->hasUnpaidDays())<span class="mt-1 block text-sm font-medium text-amber-700">{{ $a->daysSplitLabel() }}</span>@endif</dd></div>
+                        <div><dt>Date Returning to Work</dt><dd class="font-semibold text-accent-700">{{ $a->return_date->format('l, d F Y') }}</dd></div>
+                        @if ($a->reason)<div class="sm:col-span-2"><dt>Notes</dt><dd class="whitespace-pre-line">{{ $a->reason }}</dd></div>@endif
                         @if ($a->contact_while_away)<div class="sm:col-span-2"><dt>Contact while away</dt><dd>{{ $a->contact_while_away }}</dd></div>@endif
-                        <div><dt>Employee declaration</dt><dd>
-                            @if ($a->declaration_accepted)<span class="inline-flex items-center gap-1 text-accent-700"><x-icon name="check" class="size-4" /> Accepted {{ $a->declaration_accepted_at?->format('d M Y H:i') }}</span>
-                            @else<span class="text-gray-500">Not yet accepted</span>@endif
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h2 class="card-title">3. Employee Declaration</h2></div>
+                <div class="card-body space-y-4">
+                    <p class="text-sm text-gray-700">I confirm that the above information is correct and that I will ensure all urgent tasks are handed over before my leave begins.</p>
+                    <dl class="dl-grid">
+                        <div><dt>Employee Signature</dt><dd>
+                            @if ($a->employee_signature)
+                                <img src="{{ $a->employee_signature }}" alt="Signature of {{ $a->employee_name }}" class="h-20 max-w-full rounded border border-gray-200 bg-white">
+                            @elseif ($a->declaration_accepted)
+                                <span class="inline-flex items-center gap-1 text-accent-700"><x-icon name="check" class="size-4" /> Accepted electronically</span>
+                            @else
+                                <span class="text-gray-500">Not signed yet</span>
+                            @endif
                         </dd></div>
+                        <div><dt>Date</dt><dd>{{ ($a->employee_signed_on ?? $a->declaration_accepted_at)?->format('d F Y') ?? '—' }}</dd></div>
                         <div><dt>Submission date</dt><dd>{{ $a->submitted_at?->format('d M Y H:i') ?? 'Not submitted' }}</dd></div>
                     </dl>
                 </div>
@@ -120,17 +145,35 @@
                             <p class="mt-2"><span @class(['badge', 'bg-accent-50 text-accent-800 ring-accent-200' => $a->manager_recommendation === 'approve', 'bg-red-50 text-red-700 ring-red-200' => $a->manager_recommendation !== 'approve'])>
                                 {{ $a->manager_recommendation === 'approve' ? 'Recommends approval' : 'Does not recommend approval' }}</span></p>
                             @if ($a->manager_comment)<p class="mt-2 rounded-lg bg-gray-50 p-3 text-sm whitespace-pre-line">{{ $a->manager_comment }}</p>@endif
+                            @if ($a->approver_signature && ! $a->decided_at)
+                                <p class="mt-3 text-xs text-gray-500">Manager/Owner Signature</p>
+                                <img src="{{ $a->approver_signature }}" alt="Manager signature" class="h-16 max-w-full rounded border border-gray-200 bg-white">
+                            @endif
                         @else
                             <p class="mt-1 text-sm text-gray-500">Not yet reviewed.</p>
                         @endif
                     </div>
                     <div>
-                        <p class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Director (final decision)</p>
+                        <p class="text-xs font-semibold tracking-wide text-gray-500 uppercase">4. Office Use Only (Approval)</p>
                         @if ($a->decided_at)
-                            <p class="mt-1 text-sm font-medium">{{ $a->director?->name }}</p>
-                            <p class="text-xs text-gray-500">{{ $a->decided_at->format('d M Y H:i') }}</p>
                             <p class="mt-2"><x-status :status="$a->status" /></p>
-                            @if ($a->director_comment)<p class="mt-2 rounded-lg bg-gray-50 p-3 text-sm whitespace-pre-line">{{ $a->director_comment }}</p>@endif
+                            @if ($a->director_comment)
+                                <p class="mt-2 text-xs text-gray-500">{{ $a->status === LeaveStatus::Declined ? 'Reason' : 'Comment' }}</p>
+                                <p class="rounded-lg bg-gray-50 p-3 text-sm whitespace-pre-line">{{ $a->director_comment }}</p>
+                            @endif
+                            <dl class="mt-3 space-y-2 text-sm">
+                                <div><dt class="text-xs text-gray-500">Manager/Owner Signature</dt><dd>
+                                    @if ($a->approver_signature)<img src="{{ $a->approver_signature }}" alt="Approver signature" class="h-16 max-w-full rounded border border-gray-200 bg-white">@else<span class="text-gray-500">Recorded electronically</span>@endif
+                                </dd></div>
+                                <div><dt class="text-xs text-gray-500">Date</dt><dd>{{ $a->decided_at->format('d/m/Y') }}</dd></div>
+                                <div><dt class="text-xs text-gray-500">Print Name</dt><dd class="font-medium">{{ $a->approver_name ?? $a->director?->name }}</dd></div>
+                                @if ($a->director_signature)
+                                    <div><dt class="text-xs text-gray-500">Director Signature</dt><dd>
+                                        <img src="{{ $a->director_signature }}" alt="Director signature" class="h-16 max-w-full rounded border border-gray-200 bg-white">
+                                        <span class="block text-xs text-gray-500">{{ $a->director?->name }}</span>
+                                    </dd></div>
+                                @endif
+                            </dl>
                         @else
                             <p class="mt-1 text-sm text-gray-500">Awaiting decision.</p>
                         @endif
@@ -140,6 +183,42 @@
         </div>
 
         <div class="space-y-6">
+            {{-- Applicant's balance for this category --}}
+            @if ($balance?->tracked())
+                @php
+                    $counts = in_array($a->status, [LeaveStatus::Approved, ...\App\Services\LeaveBalanceService::PENDING], true);
+                    $after = $balance->availableAfterPending() - ($counts ? $a->paidDays() : 0);
+                @endphp
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">{{ $a->user_id === $me->id ? 'Your' : 'Employee' }} {{ $balance->category->name }} balance</h2>
+                    </div>
+                    <div class="card-body space-y-3 text-sm">
+                        <dl class="grid grid-cols-2 gap-2">
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">Entitlement</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($balance->entitlement) }} days</dd></div>
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">Already taken</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($balance->taken) }} days</dd></div>
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">Other pending</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($balance->pending) }} days</dd></div>
+                            <div class="rounded-lg bg-gray-50 p-2"><dt class="text-xs text-gray-500">This application</dt><dd class="font-semibold tabular-nums">{{ \App\Services\LeaveBalance::days($a->paidDays()) }} days</dd></div>
+                        </dl>
+                        @if ($a->hasUnpaidDays())
+                            <p class="rounded-lg bg-amber-50 px-3 py-2 text-amber-800 ring-1 ring-amber-200">
+                                {{ \App\Services\LeaveBalance::days((float) $a->unpaid_days) }} day(s) beyond the balance are recorded as {{ \App\Models\LeaveCategory::UNPAID }}.
+                            </p>
+                        @endif
+                        <div @class(['rounded-lg px-3 py-2 ring-1', 'bg-red-50 text-red-800 ring-red-200' => $after < 0, 'bg-accent-50 text-accent-800 ring-accent-200' => $after >= 0])>
+                            @if ($counts)
+                                Left after this application: <strong class="tabular-nums">{{ \App\Services\LeaveBalance::days($after) }} days</strong>
+                                @if ($after < 0)<span class="block text-xs">This exceeds the entitlement by {{ \App\Services\LeaveBalance::days(-$after) }} days.</span>@endif
+                            @else
+                                Available: <strong class="tabular-nums">{{ \App\Services\LeaveBalance::days($balance->availableAfterPending()) }} days</strong>
+                                <span class="block text-xs">This application does not count against the balance ({{ strtolower($a->status->label()) }}).</span>
+                            @endif
+                        </div>
+                        <p class="text-xs text-gray-400">Current cycle {{ $balance->cycleLabel() }}, working days.</p>
+                    </div>
+                </div>
+            @endif
+
             {{-- Manager actions --}}
             @if ($canReview)
                 <div class="card ring-2 ring-brand-200" x-data="{ mode: 'forward' }">
@@ -164,7 +243,13 @@
                             <x-field label="Comments (operational requirements, cover, etc.)" name="comment">
                                 <textarea name="comment" rows="3" class="form-input">{{ old('comment') }}</textarea>
                             </x-field>
-                            <button class="btn-primary w-full"><x-icon name="send" class="size-4" /> Forward to Director</button>
+                            <x-field label="Manager/Owner Signature" name="approver_signature" required>
+                                <x-signature-pad name="approver_signature" :value="old('approver_signature', $me->signature)" />
+                            </x-field>
+                            <x-field label="Print Name" name="approver_name" required>
+                                <input name="approver_name" class="form-input" value="{{ old('approver_name', $me->name) }}" maxlength="150" required>
+                            </x-field>
+                            <button class="btn-primary w-full"><x-icon name="send" class="size-4" /> Sign &amp; forward to Director</button>
                         </form>
                         <form x-cloak x-show="mode==='return'" method="POST" action="{{ route('leave.return', $a) }}" class="space-y-3">@csrf
                             <x-field label="What information is needed?" name="comment" required>
@@ -172,23 +257,50 @@
                             </x-field>
                             <button class="btn bg-amber-500 text-white hover:bg-amber-600 w-full"><x-icon name="undo" class="size-4" /> Return to employee</button>
                         </form>
-                        <p class="text-xs text-gray-500">The Manager reviews and forwards. The final decision is made by the Director.</p>
+                        <p class="text-xs text-gray-500">The Manager reviews, signs and forwards. The final decision is made by the Director.</p>
                     </div>
                 </div>
             @endif
 
-            {{-- Director decision --}}
+            {{-- Office use only: final decision --}}
             @if ($canDecide)
-                <div class="card ring-2 ring-accent-200">
-                    <div class="card-header bg-accent-50/60"><h2 class="card-title">Director decision</h2></div>
+                <div class="card ring-2 ring-accent-200" x-data="{ decision: '{{ old('decision', 'approve') }}' }">
+                    <div class="card-header bg-accent-50/60"><h2 class="card-title">4. Office Use Only (Approval)</h2></div>
                     <form method="POST" action="{{ route('leave.decide', $a) }}" class="card-body space-y-4">@csrf
-                        <x-field label="Comments" name="comment" help="Required when declining.">
-                            <textarea name="comment" rows="4" class="form-input">{{ old('comment') }}</textarea>
+                        <fieldset class="space-y-2 text-sm">
+                            <label class="flex items-center gap-2"><input type="radio" name="decision" value="approve" x-model="decision" class="form-check rounded-full"> <span class="font-medium">Approved</span></label>
+                            <label class="flex items-center gap-2"><input type="radio" name="decision" value="decline" x-model="decision" class="form-check rounded-full"> <span class="font-medium">Declined</span></label>
+                            @error('decision')<p class="form-error">{{ $message }}</p>@enderror
+                        </fieldset>
+                        <x-field label="Reason" name="comment" x-show="decision === 'decline'" x-cloak>
+                            <textarea name="comment" rows="3" class="form-input" :required="decision === 'decline'">{{ old('comment') }}</textarea>
                         </x-field>
-                        <div class="grid grid-cols-2 gap-2">
-                            <button name="decision" value="decline" class="btn-danger" onclick="return confirm('Decline this application?')"><x-icon name="x" class="size-4" /> Decline</button>
-                            <button name="decision" value="approve" class="btn-accent"><x-icon name="check" class="size-4" /> Approve</button>
+                        @if ($a->approver_signature)
+                            {{-- Signed by the Manager when forwarding. --}}
+                            <div class="space-y-2 text-sm">
+                                <p class="text-xs font-medium text-gray-500">Manager/Owner Signature</p>
+                                <img src="{{ $a->approver_signature }}" alt="Manager signature" class="h-16 max-w-full rounded border border-gray-200 bg-white">
+                                <p class="text-xs text-gray-500">Signed by {{ $a->approver_name }}{{ $a->manager_reviewed_at ? ' on '.$a->manager_reviewed_at->format('d/m/Y') : '' }}</p>
+                            </div>
+                        @endif
+                        <x-field label="Director Signature" name="director_signature" required
+                                 :help="$a->approver_signature ? null : 'No Manager signed this form, so your signature is also used as the Manager/Owner Signature.'">
+                            <x-signature-pad name="director_signature" upload :value="old('director_signature', $me->signature)" />
+                        </x-field>
+                        <div class="grid grid-cols-2 gap-3">
+                            <x-field label="Date"><input class="form-input" value="{{ today()->format('d/m/Y') }}" disabled></x-field>
+                            @if ($a->approver_signature)
+                                <x-field label="Director"><input class="form-input" value="{{ $me->name }}" disabled></x-field>
+                            @else
+                                <x-field label="Print Name" name="approver_name" required>
+                                    <input name="approver_name" class="form-input" value="{{ old('approver_name', $me->name) }}" maxlength="150" required>
+                                </x-field>
+                            @endif
                         </div>
+                        <button class="w-full" :class="decision === 'decline' ? 'btn-danger' : 'btn-accent'"
+                                @click="if (decision === 'decline' && !confirm('Decline this application?')) $event.preventDefault()">
+                            <span x-text="decision === 'decline' ? 'Decline application' : 'Approve application'"></span>
+                        </button>
                     </form>
                 </div>
             @endif

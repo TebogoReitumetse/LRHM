@@ -9,12 +9,15 @@
             <div class="card-body grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <x-field label="Full name" name="name" required><input name="name" value="{{ old('name', $user->name) }}" class="form-input" required></x-field>
                 <x-field label="Employee number" name="employee_number" required><input name="employee_number" value="{{ old('employee_number', $user->employee_number) }}" class="form-input" required></x-field>
+                <x-field label="Employee ID number" name="id_number" help="SA ID or passport number, as on the leave application form.">
+                    <input name="id_number" value="{{ old('id_number', $user->id_number) }}" class="form-input" maxlength="20" inputmode="numeric" autocomplete="off">
+                </x-field>
                 <x-field label="Department" name="department_id">
                     <select name="department_id" class="form-input"><option value="">—</option>
                         @foreach ($departments as $d)<option value="{{ $d->id }}" @selected(old('department_id', $user->department_id) == $d->id)>{{ $d->name }}</option>@endforeach
                     </select>
                 </x-field>
-                <x-field label="Job title / function" name="job_title"><input name="job_title" value="{{ old('job_title', $user->job_title) }}" class="form-input"></x-field>
+                <x-field label="Position / job title" name="job_title"><input name="job_title" value="{{ old('job_title', $user->job_title) }}" class="form-input"></x-field>
                 <x-field label="Email (for notifications)" name="email"><input type="email" name="email" value="{{ old('email', $user->email) }}" class="form-input"></x-field>
                 <x-field label="Phone" name="phone"><input name="phone" value="{{ old('phone', $user->phone) }}" class="form-input"></x-field>
                 <x-field label="Employment type" name="employment_type" required>
@@ -22,6 +25,9 @@
                         <option value="employee" @selected(old('employment_type', $user->employment_type) === 'employee')>Employee</option>
                         <option value="contractor" @selected(old('employment_type', $user->employment_type) === 'contractor')>Contractor</option>
                     </select>
+                </x-field>
+                <x-field label="Employment start date" name="employment_start_date" help="Leave cycles (annual, sick, family responsibility) run from this date. If blank, cycles start on 1 January.">
+                    <input type="date" name="employment_start_date" value="{{ old('employment_start_date', $user->employment_start_date?->toDateString()) }}" class="form-input">
                 </x-field>
             </div>
         </div>

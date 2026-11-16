@@ -8,16 +8,19 @@ use App\Enums\LeaveStatus;
 use App\Models\AbsenceRecord;
 use App\Models\Contract;
 use App\Models\LeaveApplication;
+use App\Models\PublicHoliday;
 use App\Models\User;
 use App\Services\BackupService;
+use App\Services\LeaveBalanceService;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, BackupService $backups)
+    public function __invoke(Request $request, BackupService $backups, LeaveBalanceService $balances)
     {
         $user = $request->user();
-        $data = ['user' => $user];
+        $data = ['user' => $user, 'calendar' => $this->holidayCalendar()];
+        $data['myBalances'] = $user->isAdmin() ? collect() : $balances->forUser($user);
 
         // Personal section for every user.
         $mine = $user->leaveApplications();
@@ -80,6 +83,20 @@ class DashboardController extends Controller
         }
 
         return view('dashboard', $data);
+    }
+
+    /** Twelve months from the current one with their public holidays, plus the next few from today. */
+    private function holidayCalendar(int $count = 12): array
+    {
+        $first = today()->startOfMonth();
+        $months = collect(range(0, $count - 1))->map(fn ($i) => $first->copy()->addMonths($i));
+
+        return [
+            'months' => $months,
+            'holidays' => PublicHoliday::whereBetween('date', [$first, $months->last()->copy()->endOfMonth()])
+                ->get()->keyBy(fn ($h) => $h->date->toDateString()),
+            'upcoming' => PublicHoliday::whereDate('date', '>=', today())->orderBy('date')->take(5)->get(),
+        ];
     }
 
     /** Approved working days per month for the last 6 months (by start date). */

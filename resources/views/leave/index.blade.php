@@ -23,7 +23,7 @@
                     @foreach ($applications as $a)
                         <tr>
                             <td class="font-medium whitespace-nowrap text-gray-900">{{ $a->reference ?? '—' }}</td>
-                            <td>{{ $a->category->name }}</td>
+                            <td>{{ $a->leaveTypeLabel() }}</td>
                             <td class="whitespace-nowrap">{{ $a->start_date->format('d M Y') }} – {{ $a->end_date->format('d M Y') }}</td>
                             <td class="tabular-nums">{{ (float) $a->working_days }}</td>
                             <td class="whitespace-nowrap">{{ $a->submitted_at?->format('d M Y') ?? '—' }}</td>

@@ -53,7 +53,7 @@
     @foreach ($applications as $a)
         <tr>
             <td>{{ $a->reference }}</td><td>{{ $a->employee_name }}</td><td>{{ $a->employee_number }}</td><td>{{ $a->department }}</td>
-            <td>{{ $a->category->name }}</td><td>{{ $a->start_date->format('d/m/Y') }}</td><td>{{ $a->end_date->format('d/m/Y') }}</td>
+            <td>{{ $a->leaveTypeLabel() }}</td><td>{{ $a->start_date->format('d/m/Y') }}</td><td>{{ $a->end_date->format('d/m/Y') }}</td>
             <td>{{ $a->return_date->format('d/m/Y') }}</td><td class="num">{{ (float) $a->working_days }}</td><td>{{ $a->submitted_at?->format('d/m/Y') }}</td>
             <td>{{ $a->status->label() }}</td><td>{{ \Illuminate\Support\Str::limit($a->manager_comment, 80) }}</td>
             <td>{{ $a->director?->name }}</td><td>{{ $a->decided_at?->format('d/m/Y H:i') }}</td>

@@ -62,7 +62,7 @@ class LeaveRegisterController extends Controller
     public static function row(LeaveApplication $a): array
     {
         return [
-            $a->reference, $a->employee_name, $a->employee_number, $a->department, $a->category->name,
+            $a->reference, $a->employee_name, $a->employee_number, $a->department, $a->leaveTypeLabel(),
             $a->start_date->format('Y-m-d'), $a->end_date->format('Y-m-d'), $a->return_date->format('Y-m-d'),
             $a->working_days, $a->submitted_at?->format('Y-m-d H:i'), $a->status->label(),
             $a->manager?->name, $a->manager_recommendation ? ucfirst($a->manager_recommendation) : '', $a->manager_comment,

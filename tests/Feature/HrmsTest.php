@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Enums\ContractStatus;
 use App\Enums\LeaveStatus;
+use App\Models\AbsenceRecord;
 use App\Models\Contract;
 use App\Models\LeaveApplication;
 use App\Models\LeaveCategory;
 use App\Models\User;
+use App\Notifications\ContractExpiryNotification;
+use App\Notifications\LeaveApplicationNotification;
 use App\Services\ContractService;
 use App\Services\WorkingDayCalculator;
 use Carbon\Carbon;
@@ -21,6 +24,9 @@ use Tests\TestCase;
 class HrmsTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** A 1x1 PNG, standing in for a drawn signature. */
+    private const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
     protected function setUp(): void
     {
@@ -66,7 +72,7 @@ class HrmsTest extends TestCase
             $this->get(route('contracts.edit', $c))->assertStatus(in_array($c->status, [ContractStatus::Renewed, ContractStatus::Superseded, ContractStatus::Ended], true) ? 403 : 200);
         }
         $this->get(route('contracts.renew', Contract::where('status', 'due_to_expire')->first()))->assertOk();
-        foreach (\App\Models\AbsenceRecord::all() as $r) {
+        foreach (AbsenceRecord::all() as $r) {
             $this->get(route('absences.show', $r))->assertOk();
             $this->get(route('absences.edit', $r))->assertOk();
         }
@@ -112,59 +118,200 @@ class HrmsTest extends TestCase
         // Mon 7 Dec 2026 – Fri 18 Dec 2026, includes Day of Reconciliation (Wed 16 Dec): 9 working days.
         $this->actingAs($emp)->post(route('leave.store'), [
             'leave_category_id' => $annual->id, 'start_date' => '2026-12-07', 'end_date' => '2026-12-18',
-            'return_date' => '2026-12-21', 'reason' => 'Holiday', 'declaration' => 1, 'action' => 'submit',
+            'return_date' => '2026-12-21', 'employee_signature' => self::SIG, 'employee_signed_on' => '2026-11-10', 'action' => 'submit',
         ])->assertRedirect();
 
         $app = LeaveApplication::where('user_id', $emp->id)->latest('id')->first();
         $this->assertEquals(9, (float) $app->working_days);
         $this->assertSame(LeaveStatus::Submitted, $app->status);
         $this->assertNotNull($app->reference);
-        Notification::assertSentTo($manager, \App\Notifications\LeaveApplicationNotification::class);
+        $this->assertLeaveEmailSent($manager, 'submitted');
+        $this->assertLeaveEmailSent($director, 'submitted_for_director');
 
         // Employee cannot approve; Director cannot act before the Manager forwards.
         $this->post(route('leave.decide', $app), ['decision' => 'approve'])->assertForbidden();
-        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve'])->assertSessionHasErrors('status');
+        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve', 'approver_signature' => self::SIG, 'approver_name' => 'X'])->assertSessionHasErrors('status');
 
         // Manager returns for information.
         $this->actingAs($manager)->post(route('leave.return', $app), ['comment' => 'Add contact details'])->assertRedirect();
         $this->assertSame(LeaveStatus::ReturnedForInformation, $app->fresh()->status);
+        $this->assertNull($app->fresh()->employee_signature); // must sign again
+
+        // Resubmitting without signing again is not allowed.
+        $this->actingAs($emp)->put(route('leave.update', $app), [
+            'leave_category_id' => $annual->id, 'start_date' => '2026-12-07', 'end_date' => '2026-12-18',
+            'return_date' => '2026-12-21', 'action' => 'submit',
+        ])->assertSessionHasErrors('employee_signature');
 
         // Employee resubmits.
         $this->actingAs($emp)->put(route('leave.update', $app), [
             'leave_category_id' => $annual->id, 'start_date' => '2026-12-07', 'end_date' => '2026-12-18',
-            'return_date' => '2026-12-21', 'reason' => 'Holiday', 'contact_while_away' => '082 000 0000', 'declaration' => 1, 'action' => 'submit',
+            'return_date' => '2026-12-21', 'employee_signature' => self::SIG, 'action' => 'submit',
         ])->assertRedirect();
         $this->assertSame(LeaveStatus::Submitted, $app->fresh()->status);
 
-        // Manager forwards, Director approves.
-        $this->actingAs($manager)->post(route('leave.forward', $app), ['recommendation' => 'approve', 'comment' => 'OK'])->assertRedirect();
+        // Manager must sign the Manager/Owner Signature when forwarding.
+        $this->actingAs($manager)->post(route('leave.forward', $app), ['recommendation' => 'approve', 'comment' => 'OK'])
+            ->assertSessionHasErrors(['approver_signature', 'approver_name']);
+        $this->actingAs($manager)->post(route('leave.forward', $app), [
+            'recommendation' => 'approve', 'comment' => 'OK', 'approver_signature' => self::SIG, 'approver_name' => 'Thabo Manager',
+        ])->assertRedirect();
         $this->assertSame(LeaveStatus::PendingDirectorApproval, $app->fresh()->status);
         $this->actingAs($manager)->post(route('leave.decide', $app), ['decision' => 'approve'])->assertForbidden();
-        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve', 'comment' => 'Enjoy'])->assertRedirect();
+
+        // Director must sign before approving; the Manager's signature stays on the form.
+        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve', 'comment' => 'Enjoy'])
+            ->assertSessionHasErrors('director_signature');
+        $this->assertSame(LeaveStatus::PendingDirectorApproval, $app->fresh()->status);
+        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve', 'comment' => 'Enjoy', 'director_signature' => self::SIG])
+            ->assertSessionHasNoErrors()->assertRedirect();
 
         $app->refresh();
         $this->assertSame(LeaveStatus::Approved, $app->status);
+        $this->assertSame('Thabo Manager', $app->approver_name);
+        $this->assertSame(self::SIG, $app->approver_signature);
+        $this->assertSame(self::SIG, $app->director_signature);
+        $this->get(route('leave.print', $app))->assertOk()->assertSee('LEAVE APPLICATION FORM')->assertSee('Thabo Manager');
         $this->assertEquals($director->id, $app->director_id);
         $this->assertNotNull($app->decided_at);
         $this->assertGreaterThanOrEqual(6, $app->actions()->count());
-        Notification::assertSentTo($emp, \App\Notifications\LeaveApplicationNotification::class);
+        $this->assertLeaveEmailSent($emp, 'approved');
     }
 
-    public function test_sick_leave_requires_document_and_declaration(): void
+    public function test_signatures_are_saved_for_reuse(): void
+    {
+        $emp = $this->user('lerato');
+        $manager = $this->user('manager');
+        $director = $this->user('director');
+        Notification::fake();
+        $annual = LeaveCategory::where('name', 'Annual Leave')->first();
+        $managerSig = str_replace('ggg', 'ggh', self::SIG);
+        $directorSig = str_replace('ggg', 'ggi', self::SIG);
+
+        $this->actingAs($emp)->post(route('leave.store'), [
+            'leave_category_id' => $annual->id, 'start_date' => '2027-05-03', 'end_date' => '2027-05-04',
+            'return_date' => '2027-05-05', 'employee_signature' => self::SIG, 'action' => 'submit',
+        ])->assertSessionHasNoErrors();
+        $app = LeaveApplication::where('user_id', $emp->id)->latest('id')->first();
+        $this->assertSame(self::SIG, $emp->fresh()->signature);
+
+        $this->actingAs($manager)->post(route('leave.forward', $app), [
+            'recommendation' => 'approve', 'approver_signature' => $managerSig, 'approver_name' => $manager->name,
+        ])->assertSessionHasNoErrors();
+        $this->assertSame($managerSig, $manager->fresh()->signature);
+
+        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve'])
+            ->assertSessionHasErrors('director_signature');
+        $this->assertSame(LeaveStatus::PendingDirectorApproval, $app->fresh()->status);
+        $this->actingAs($director)->post(route('leave.decide', $app), ['decision' => 'approve', 'director_signature' => $directorSig])
+            ->assertSessionHasNoErrors();
+        $this->assertSame($directorSig, $app->fresh()->director_signature);
+        $this->assertSame($managerSig, $app->fresh()->approver_signature);
+        $this->assertSame($directorSig, $director->fresh()->signature);
+
+        // The saved signature pre-fills the next form and can be removed from the profile.
+        $this->actingAs($emp)->get(route('leave.create'))->assertOk()->assertSee(substr(self::SIG, 22), false);
+        $this->put(route('profile.signature'), ['signature' => ''])->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertNull($emp->fresh()->signature);
+        $this->put(route('profile.signature'), ['signature' => 'not-a-png'])->assertSessionHasErrors('signature');
+    }
+
+    private function assertLeaveEmailSent(User $user, string $event): void
+    {
+        Notification::assertSentTo($user, LeaveApplicationNotification::class,
+            fn (LeaveApplicationNotification $n, array $channels) => $n->event === $event && in_array('mail', $channels, true));
+    }
+
+    public function test_sick_leave_needs_certificate_only_for_more_than_two_days(): void
     {
         $emp = $this->user('johan');
         $sick = LeaveCategory::where('name', 'Sick Leave')->first();
-        $data = ['leave_category_id' => $sick->id, 'start_date' => '2027-02-01', 'end_date' => '2027-02-02',
-            'return_date' => '2027-02-03', 'reason' => 'Flu', 'action' => 'submit'];
+        // Mon 1 – Wed 3 Feb 2027: 3 working days.
+        $data = ['leave_category_id' => $sick->id, 'start_date' => '2027-02-01', 'end_date' => '2027-02-03',
+            'return_date' => '2027-02-04', 'action' => 'submit'];
 
-        $this->actingAs($emp)->post(route('leave.store'), $data)->assertSessionHasErrors(['declaration', 'documents']);
+        $this->actingAs($emp)->post(route('leave.store'), $data)->assertSessionHasErrors(['employee_signature', 'documents']);
         $this->assertSame(LeaveStatus::Draft, LeaveApplication::where('user_id', $emp->id)->latest('id')->first()->status);
 
-        $this->post(route('leave.store'), $data + ['declaration' => 1, 'start_date' => '2027-02-08', 'end_date' => '2027-02-08', 'return_date' => '2027-02-09',
-            'documents' => [UploadedFile::fake()->create('medical.pdf', 100, 'application/pdf')]])->assertSessionHasNoErrors();
+        // 2 days: no certificate needed.
+        $this->post(route('leave.store'), ['start_date' => '2027-02-08', 'end_date' => '2027-02-09', 'return_date' => '2027-02-10',
+            'employee_signature' => self::SIG] + $data)->assertSessionHasNoErrors();
+        $this->assertSame(LeaveStatus::Submitted, LeaveApplication::where('user_id', $emp->id)->latest('id')->first()->status);
+
+        // More than 2 days with a certificate.
+        $this->post(route('leave.store'), ['start_date' => '2027-02-15', 'end_date' => '2027-02-17', 'return_date' => '2027-02-18',
+            'employee_signature' => self::SIG, 'documents' => [UploadedFile::fake()->create('medical.pdf', 100, 'application/pdf')]] + $data)
+            ->assertSessionHasNoErrors();
         $app = LeaveApplication::where('user_id', $emp->id)->latest('id')->first();
         $this->assertSame(LeaveStatus::Submitted, $app->status);
         $this->get(route('leave.document', [$app, $app->documents->first()]))->assertOk();
+    }
+
+    public function test_paper_form_fields(): void
+    {
+        $emp = $this->user('lerato');
+        $emp->update(['id_number' => '9104075789082']);
+        $other = LeaveCategory::where('name', 'Other')->first();
+
+        // The form lists exactly the leave types on the paper form.
+        $this->assertSame(['Annual Leave', 'Sick Leave', 'Family Responsibility Leave', 'Maternity / Paternity Leave', 'Unpaid Leave', 'Other'],
+            LeaveCategory::active()->pluck('name')->all());
+        $this->actingAs($emp)->get(route('leave.create'))->assertOk()
+            ->assertSee('9104075789082')->assertSee('I confirm that the above information is correct', false)
+            ->assertSee('Attach medical certificate if more than 2 days')
+            ->assertSee(LeaveCategory::FORM_NOTES['Maternity / Paternity Leave'])
+            ->assertSee(LeaveCategory::FORM_NOTES[LeaveCategory::UNPAID])
+            ->assertSee(LeaveCategory::FORM_NOTES['Other'])
+            ->assertViewHas('balanceMap', fn (array $map) => $map[LeaveCategory::where('name', 'Maternity / Paternity Leave')->value('id')] == [
+                'tracked' => false, 'entitlements' => LeaveCategory::UNTRACKED_ENTITLEMENTS['Maternity / Paternity Leave'],
+                'taken' => 0, 'pending' => 0, 'cycle' => now()->startOfYear()->format('d M Y').' – '.now()->endOfYear()->format('d M Y'),
+            ]);
+
+        $data = ['leave_category_id' => $other->id, 'start_date' => '2027-03-01', 'end_date' => '2027-03-01',
+            'return_date' => '2027-03-02', 'employee_signature' => self::SIG, 'action' => 'submit'];
+        $this->post(route('leave.store'), $data)->assertSessionHasErrors('other_leave_type');
+        $this->post(route('leave.store'), $data + ['other_leave_type' => 'Study leave'])->assertSessionHasNoErrors();
+
+        $app = LeaveApplication::where('user_id', $emp->id)->latest('id')->first();
+        $this->assertSame('9104075789082', $app->id_number);
+        $this->assertSame('Other: Study leave', $app->leaveTypeLabel());
+        $this->assertTrue($app->declaration_accepted);
+        $this->assertNotNull($app->employee_signed_on);
+
+        // A signature that is not a PNG image is rejected.
+        $this->post(route('leave.store'), ['employee_signature' => 'javascript:alert(1)', 'start_date' => '2027-03-08',
+            'end_date' => '2027-03-08', 'return_date' => '2027-03-09', 'other_leave_type' => 'x'] + $data)
+            ->assertSessionHasErrors('employee_signature');
+    }
+
+    public function test_id_number_entered_on_leave_form_is_remembered(): void
+    {
+        $emp = $this->user('lerato');
+        $emp->update(['id_number' => null]);
+        $annual = LeaveCategory::where('name', 'Annual Leave')->first();
+        $data = ['leave_category_id' => $annual->id, 'start_date' => '2027-04-05', 'end_date' => '2027-04-05',
+            'return_date' => '2027-04-06', 'employee_signature' => self::SIG];
+
+        $this->actingAs($emp)->post(route('leave.store'), $data + ['id_number' => 'abc!'])->assertSessionHasErrors('id_number');
+        $this->post(route('leave.store'), $data + ['id_number' => '9104075789082'])->assertSessionHasNoErrors();
+
+        $this->assertSame('9104075789082', $emp->fresh()->id_number);
+        $this->assertSame('9104075789082', LeaveApplication::where('user_id', $emp->id)->latest('id')->first()->id_number);
+        // The next application is pre-filled from the profile.
+        $this->get(route('leave.create'))->assertOk()->assertSee('9104075789082');
+    }
+
+    public function test_user_id_number_is_saved(): void
+    {
+        $admin = $this->user('admin');
+        $this->actingAs($admin)->post(route('admin.users.store'), [
+            'name' => 'Tebogo Gopane', 'username' => 'tebogo', 'employee_number' => 'LV-020', 'id_number' => '9104075789082',
+            'role' => 'employee', 'employment_type' => 'employee', 'is_active' => 1,
+        ])->assertRedirect();
+        $u = User::where('username', 'tebogo')->first();
+        $this->assertSame('9104075789082', $u->id_number);
+        $this->get(route('admin.users.edit', $u))->assertOk()->assertSee('9104075789082');
+        $this->get(route('admin.users.index', ['search' => '91040757']))->assertOk()->assertSee('Tebogo Gopane');
     }
 
     public function test_working_day_calculation(): void
@@ -198,7 +345,7 @@ class HrmsTest extends TestCase
 
         $svc->sendReminders();
         $this->assertTrue($c->reminders()->where('reminder_key', 'reminder_90')->where('status', 'sent')->exists());
-        Notification::assertSentTo($manager, \App\Notifications\ContractExpiryNotification::class);
+        Notification::assertSentTo($manager, ContractExpiryNotification::class);
 
         $this->travelTo(Carbon::parse('2026-12-05 08:00'));
         $svc->sendReminders();

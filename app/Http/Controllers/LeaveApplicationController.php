@@ -6,6 +6,9 @@ use App\Enums\LeaveStatus;
 use App\Models\LeaveApplication;
 use App\Models\LeaveCategory;
 use App\Models\LeaveDocument;
+use App\Models\User;
+use App\Services\LeaveBalance;
+use App\Services\LeaveBalanceService;
 use App\Services\LeaveWorkflow;
 use App\Services\WorkingDayCalculator;
 use Carbon\Carbon;
@@ -17,7 +20,16 @@ use Illuminate\Validation\ValidationException;
 
 class LeaveApplicationController extends Controller
 {
-    public function __construct(private WorkingDayCalculator $calendar, private LeaveWorkflow $workflow) {}
+    /** Signatures are drawn on the form and posted as PNG data URLs. */
+    public const SIGNATURE_PATTERN = '/^data:image\/png;base64,[A-Za-z0-9+\/]+=*$/';
+
+    public const MAX_SIGNATURE_LENGTH = 600000;
+
+    public function __construct(
+        private WorkingDayCalculator $calendar,
+        private LeaveWorkflow $workflow,
+        private LeaveBalanceService $balances,
+    ) {}
 
     /** The signed-in user's own applications. */
     public function index(Request $request)
@@ -35,6 +47,7 @@ class LeaveApplicationController extends Controller
             'application' => new LeaveApplication(['working_days' => 0]),
             'categories' => LeaveCategory::active()->get(),
             'user' => $request->user()->load('department'),
+            'balanceMap' => $this->balanceMap($request->user()),
         ]);
     }
 
@@ -54,6 +67,8 @@ class LeaveApplicationController extends Controller
                 'status' => LeaveStatus::Draft,
             ]);
             $app->save();
+            $this->rememberIdNumber($user, $data['id_number']);
+            $user->rememberSignature($data['employee_signature']);
             $app->logAction('created', null, LeaveStatus::Draft);
             $this->storeDocuments($request, $app);
 
@@ -71,6 +86,8 @@ class LeaveApplicationController extends Controller
         return view('leave.show', [
             'application' => $leave,
             'holidays' => $this->calendar->holidaysBetween($leave->start_date, $leave->end_date),
+            // The applicant's balance for this category, not counting this application.
+            'balance' => $this->balances->forUser($leave->user, $leave->id)->get($leave->leave_category_id),
         ]);
     }
 
@@ -82,6 +99,7 @@ class LeaveApplicationController extends Controller
             'application' => $leave->load('documents'),
             'categories' => LeaveCategory::active()->get(),
             'user' => $request->user()->load('department'),
+            'balanceMap' => $this->balanceMap($request->user(), $leave->id),
         ]);
     }
 
@@ -92,6 +110,8 @@ class LeaveApplicationController extends Controller
 
         DB::transaction(function () use ($request, $leave, $data) {
             $leave->update($data);
+            $this->rememberIdNumber($request->user(), $data['id_number']);
+            $request->user()->rememberSignature($data['employee_signature']);
             $this->storeDocuments($request, $leave);
         });
 
@@ -123,7 +143,12 @@ class LeaveApplicationController extends Controller
         $this->authorize('view', $leave);
         $leave->load('category', 'user.department', 'documents', 'actions.user', 'manager', 'director');
 
-        return view('leave.print', ['application' => $leave]);
+        return view('leave.print', [
+            'application' => $leave,
+            // All tick boxes from the paper form, plus the chosen type if it has since been retired.
+            'categories' => LeaveCategory::where('is_active', true)->orWhere('id', $leave->leave_category_id)
+                ->orderBy('sort_order')->orderBy('name')->get(),
+        ]);
     }
 
     public function document(LeaveApplication $leave, LeaveDocument $document)
@@ -172,17 +197,22 @@ class LeaveApplicationController extends Controller
 
         $data = $request->validate([
             'leave_category_id' => ['required', Rule::exists('leave_categories', 'id')->where('is_active', true)],
+            'other_leave_type' => [$category?->requiresSpecification() ? 'required' : 'nullable', 'string', 'max:150'],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'return_date' => ['required', 'date', 'after:end_date'],
-            'reason' => [$category?->requires_reason ? 'required' : 'nullable', 'string', 'max:2000'],
-            'contact_while_away' => ['nullable', 'string', 'max:150'],
-            'declaration' => ['nullable', 'boolean'],
+            'id_number' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9 ]+$/', Rule::unique('users')->ignore($request->user())],
+            'employee_signature' => ['nullable', 'string', 'max:'.self::MAX_SIGNATURE_LENGTH, 'regex:'.self::SIGNATURE_PATTERN],
+            'employee_signed_on' => ['nullable', 'date'],
             'documents' => ['nullable', 'array', 'max:5'],
             'documents.*' => ['file', 'mimes:'.config('hrms.upload_mimes'), "max:$max"],
         ], [
-            'return_date.after' => 'The expected return date must be after the last day of leave.',
-            'reason.required' => 'Please give a reason. It is required for this leave category.',
+            'id_number.regex' => 'The ID number may only contain letters and numbers.',
+            'id_number.unique' => 'This ID number is already on another employee\'s profile.',
+            'other_leave_type.required' => 'Please specify the type of leave.',
+            'return_date.after' => 'The date returning to work must be after the last day of leave.',
+            'employee_signature.regex' => 'The signature could not be read. Please clear it and sign again.',
+            'employee_signature.max' => 'The signature is too large. Please clear it and sign again.',
         ]);
 
         $start = Carbon::parse($data['start_date']);
@@ -202,19 +232,34 @@ class LeaveApplicationController extends Controller
             throw ValidationException::withMessages(['start_date' => "These dates overlap your application {$overlap->reference} ({$overlap->status->label()})."]);
         }
 
-        $declared = $request->boolean('declaration');
+        // Signing the form is the employee declaration, as on the paper form.
+        $signature = $data['employee_signature'] ?? null;
+        $signedBefore = $existing?->declaration_accepted && $existing->employee_signature === $signature;
 
         return [
+            // Blank keeps the ID already on the profile.
+            'id_number' => $data['id_number'] ?? $request->user()->id_number,
             'leave_category_id' => $data['leave_category_id'],
+            'other_leave_type' => $category?->requiresSpecification() ? $data['other_leave_type'] : null,
             'start_date' => $start,
             'end_date' => $end,
             'return_date' => $data['return_date'],
             'working_days' => $days,
-            'reason' => $data['reason'] ?? null,
-            'contact_while_away' => $data['contact_while_away'] ?? null,
-            'declaration_accepted' => $declared,
-            'declaration_accepted_at' => $declared ? now() : null,
+            // Days beyond the balance for this type are counted as Unpaid Leave.
+            'unpaid_days' => $this->balances->unpaidDaysFor($request->user(), $category, $days, $existing?->id),
+            'employee_signature' => $signature,
+            'employee_signed_on' => $signature ? ($data['employee_signed_on'] ?? today()) : null,
+            'declaration_accepted' => (bool) $signature,
+            'declaration_accepted_at' => $signature ? ($signedBefore ? $existing->declaration_accepted_at : now()) : null,
         ];
+    }
+
+    /** Keeps the ID number on the employee profile so the next application is pre-filled. */
+    private function rememberIdNumber(User $user, ?string $idNumber): void
+    {
+        if ($idNumber && $user->id_number !== $idNumber) {
+            $user->update(['id_number' => $idNumber]);
+        }
     }
 
     private function storeDocuments(Request $request, LeaveApplication $app): void
@@ -234,11 +279,13 @@ class LeaveApplicationController extends Controller
     {
         $app->load('category', 'documents');
         $errors = [];
-        if (! $app->declaration_accepted) {
-            $errors['declaration'] = 'You must accept the employee declaration before submitting.';
+        if (! $app->declaration_accepted || ! $app->employee_signature) {
+            $errors['employee_signature'] = 'Please sign the employee declaration before submitting.';
         }
-        if ($app->category->requires_document && $app->documents->isEmpty()) {
-            $errors['documents'] = "A supporting document is required for {$app->category->name}.";
+        if ($app->category->requiresDocumentFor((float) $app->working_days) && $app->documents->isEmpty()) {
+            $errors['documents'] = $app->category->document_after_days
+                ? "Please attach a medical certificate. It is required for {$app->category->name} of more than {$app->category->document_after_days} days."
+                : "A supporting document is required for {$app->category->name}.";
         }
         if ($errors) {
             throw ValidationException::withMessages($errors);
@@ -260,5 +307,37 @@ class LeaveApplicationController extends Controller
         }
 
         return redirect()->route('leave.show', $app)->with('success', 'Application saved as a draft.');
+    }
+
+    /** Tracked balances keyed by category id, for the live check on the application form. */
+    private function balanceMap($user, ?int $excludeApplicationId = null): array
+    {
+        $balances = $this->balances->forUser($user, $excludeApplicationId);
+
+        $map = $balances
+            ->filter(fn (LeaveBalance $b) => $b->tracked())
+            ->map(fn (LeaveBalance $b) => [
+                'tracked' => true,
+                'entitlement' => (float) LeaveBalance::days($b->entitlement),
+                'taken' => (float) LeaveBalance::days($b->taken),
+                'pending' => (float) LeaveBalance::days($b->pending),
+                'available' => (float) LeaveBalance::days($b->availableAfterPending()),
+                'cycle' => $b->cycleLabel(),
+            ])->all();
+
+        // Types without a day balance (e.g. maternity) still show their entitlement and this year's leave.
+        $year = now()->startOfYear()->format('d M Y').' – '.now()->endOfYear()->format('d M Y');
+        foreach (LeaveCategory::whereIn('name', array_keys(LeaveCategory::UNTRACKED_ENTITLEMENTS))->get() as $category) {
+            $balance = $balances->get($category->id);
+            $map[$category->id] ??= [
+                'tracked' => false,
+                'entitlements' => LeaveCategory::UNTRACKED_ENTITLEMENTS[$category->name],
+                'taken' => (float) LeaveBalance::days($balance?->taken ?? 0),
+                'pending' => (float) LeaveBalance::days($balance?->pending ?? 0),
+                'cycle' => $balance?->cycleLabel() ?? $year,
+            ];
+        }
+
+        return $map;
     }
 }

@@ -4,7 +4,7 @@
     </x-page-header>
 
     <form method="GET" class="card mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div class="sm:col-span-2"><label class="form-label">Search</label><input name="search" value="{{ request('search') }}" class="form-input" placeholder="Name, username or employee no."></div>
+        <div class="sm:col-span-2"><label class="form-label">Search</label><input name="search" value="{{ request('search') }}" class="form-input" placeholder="Name, username, employee no. or ID number"></div>
         <div><label class="form-label">Role</label>
             <select name="role" class="form-input"><option value="">All</option>
                 @foreach (\App\Enums\Role::cases() as $r)<option value="{{ $r->value }}" @selected(request('role') === $r->value)>{{ $r->label() }}</option>@endforeach

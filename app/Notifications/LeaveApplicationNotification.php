@@ -23,7 +23,7 @@ class LeaveApplicationNotification extends Notification
         $a = $this->application;
 
         return match ($this->event) {
-            'submitted' => "New leave application {$a->reference} from {$a->employee_name}",
+            'submitted', 'submitted_for_director' => "New leave application {$a->reference} from {$a->employee_name}",
             'resubmitted' => "Leave application {$a->reference} resubmitted by {$a->employee_name}",
             'forwarded' => "Leave application {$a->reference} awaits your approval",
             'returned' => "Your leave application {$a->reference} needs more information",
@@ -41,7 +41,15 @@ class LeaveApplicationNotification extends Notification
             ->subject($this->title())
             ->greeting('Hello '.$notifiable->name.',')
             ->line($this->title().'.')
-            ->line("Leave: {$a->category->name}, {$a->start_date->format('d M Y')} to {$a->end_date->format('d M Y')} ({$a->working_days} working days).");
+            ->line("Leave: {$a->leaveTypeLabel()}, {$a->start_date->format('d M Y')} to {$a->end_date->format('d M Y')} ({$a->working_days} working days).");
+
+        if ($a->hasUnpaidDays()) {
+            $mail->line("Days beyond the available balance are recorded as unpaid: {$a->daysSplitLabel()}.");
+        }
+
+        if ($this->event === 'submitted_for_director') {
+            $mail->line('It is with the Manager for review. You will be asked for your decision once it is forwarded to you.');
+        }
 
         if ($this->comment) {
             $mail->line('Comment: '.$this->comment);

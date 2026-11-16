@@ -18,7 +18,7 @@ class UserController extends Controller
     {
         $users = User::with('department')
             ->when($request->search, fn ($q, $s) => $q->where(fn ($q) => $q->where('name', 'like', "%$s%")
-                ->orWhere('employee_number', 'like', "%$s%")->orWhere('username', 'like', "%$s%")))
+                ->orWhere('employee_number', 'like', "%$s%")->orWhere('id_number', 'like', "%$s%")->orWhere('username', 'like', "%$s%")))
             ->when($request->role, fn ($q, $r) => $q->where('role', $r))
             ->when($request->department, fn ($q, $d) => $q->where('department_id', $d))
             ->when($request->filled('active'), fn ($q) => $q->where('is_active', $request->boolean('active')))
@@ -98,20 +98,22 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:150'],
             'username' => ['required', 'string', 'max:60', 'alpha_dash', Rule::unique('users')->ignore($user)],
             'employee_number' => ['required', 'string', 'max:50', Rule::unique('users')->ignore($user)],
+            'id_number' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9 ]+$/', Rule::unique('users')->ignore($user)],
             'email' => ['nullable', 'email', 'max:150', Rule::unique('users')->ignore($user)],
             'phone' => ['nullable', 'string', 'max:30'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'job_title' => ['nullable', 'string', 'max:150'],
             'role' => ['required', Rule::in($roles)],
             'employment_type' => ['required', 'in:employee,contractor'],
+            'employment_start_date' => ['nullable', 'date'],
             'can_view_contract' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'password' => ['nullable', Password::defaults()],
-        ]);
+        ], ['id_number.regex' => 'The ID number may only contain letters and numbers.']);
         $data['can_view_contract'] = $request->boolean('can_view_contract');
         $data['is_active'] = $request->boolean('is_active');
 
-        return array_filter($data, fn ($v) => $v !== null) + ['email' => null, 'phone' => null, 'department_id' => null, 'job_title' => null];
+        return array_filter($data, fn ($v) => $v !== null) + ['id_number' => null, 'email' => null, 'phone' => null, 'department_id' => null, 'job_title' => null, 'employment_start_date' => null];
     }
 
     /** Managers handle staff accounts; only the administrator can create Director / Admin accounts. */

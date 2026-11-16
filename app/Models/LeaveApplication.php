@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\LeaveStatus;
 use App\Models\Concerns\Auditable;
+use App\Services\LeaveBalance;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,6 +16,9 @@ class LeaveApplication extends Model
 
     protected $guarded = ['id'];
 
+    /** Signature images are kept on the application, not copied into the audit log. */
+    protected array $auditExclude = ['employee_signature', 'approver_signature', 'director_signature'];
+
     protected function casts(): array
     {
         return [
@@ -23,8 +27,10 @@ class LeaveApplication extends Model
             'end_date' => 'date',
             'return_date' => 'date',
             'working_days' => 'decimal:1',
+            'unpaid_days' => 'decimal:1',
             'declaration_accepted' => 'boolean',
             'declaration_accepted_at' => 'datetime',
+            'employee_signed_on' => 'date',
             'submitted_at' => 'datetime',
             'manager_reviewed_at' => 'datetime',
             'returned_at' => 'datetime',
@@ -60,6 +66,41 @@ class LeaveApplication extends Model
     public function actions(): HasMany
     {
         return $this->hasMany(LeaveApplicationAction::class)->orderBy('created_at')->orderBy('id');
+    }
+
+    /** Type of leave as written on the form, e.g. "Other: Study leave". */
+    public function leaveTypeLabel(): string
+    {
+        return $this->other_leave_type ? $this->category->name.': '.$this->other_leave_type : $this->category->name;
+    }
+
+    /** Working days counted against the chosen leave type. */
+    public function paidDays(): float
+    {
+        return (float) $this->working_days - (float) $this->unpaid_days;
+    }
+
+    /** Whether some days went beyond the balance and are counted as Unpaid Leave. */
+    public function hasUnpaidDays(): bool
+    {
+        return (float) $this->unpaid_days > 0;
+    }
+
+    /** e.g. "21 Annual Leave + 3 Unpaid Leave". Empty when nothing is unpaid. */
+    public function daysSplitLabel(): string
+    {
+        if (! $this->hasUnpaidDays()) {
+            return '';
+        }
+
+        return LeaveBalance::days($this->paidDays()).' '.$this->category->name.' + '
+            .LeaveBalance::days((float) $this->unpaid_days).' '.LeaveCategory::UNPAID;
+    }
+
+    /** "Department / Position" as on the paper leave form. */
+    public function departmentPosition(): string
+    {
+        return collect([$this->department, $this->job_title])->filter()->implode(' / ') ?: '—';
     }
 
     public function scopeStatus(Builder $q, LeaveStatus ...$statuses): Builder

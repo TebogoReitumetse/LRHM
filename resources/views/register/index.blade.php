@@ -61,7 +61,7 @@
                         <tr class="cursor-pointer" onclick="location.href='{{ route('leave.show', $a) }}'">
                             <td class="font-medium whitespace-nowrap text-brand-700">{{ $a->reference }}</td>
                             <td><div class="font-medium text-gray-900">{{ $a->employee_name }}</div><div class="text-xs text-gray-500">{{ $a->employee_number }} · {{ $a->department }}</div></td>
-                            <td>{{ $a->category->name }}</td>
+                            <td>{{ $a->leaveTypeLabel() }}</td>
                             <td class="whitespace-nowrap">{{ $a->start_date->format('d M Y') }} – {{ $a->end_date->format('d M Y') }}<div class="text-xs text-gray-500">Return {{ $a->return_date->format('d M Y') }}</div></td>
                             <td class="tabular-nums">{{ (float) $a->working_days }}</td>
                             <td class="whitespace-nowrap">{{ $a->submitted_at?->format('d M Y') }}</td>

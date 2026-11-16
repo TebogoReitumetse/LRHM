@@ -18,13 +18,13 @@ class User extends Authenticatable
     use Auditable, HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'username', 'employee_number', 'department_id', 'job_title', 'email', 'phone',
-        'role', 'employment_type', 'can_view_contract', 'is_active', 'password', 'password_changed_at',
+        'name', 'username', 'employee_number', 'id_number', 'signature', 'department_id', 'job_title', 'email', 'phone',
+        'role', 'employment_type', 'employment_start_date', 'can_view_contract', 'is_active', 'password', 'password_changed_at',
     ];
 
-    protected $hidden = ['password', 'remember_token'];
+    protected $hidden = ['password', 'remember_token', 'signature'];
 
-    protected array $auditExclude = ['last_login_at'];
+    protected array $auditExclude = ['last_login_at', 'signature'];
 
     protected function casts(): array
     {
@@ -35,6 +35,7 @@ class User extends Authenticatable
             'can_view_contract' => 'boolean',
             'last_login_at' => 'datetime',
             'password_changed_at' => 'datetime',
+            'employment_start_date' => 'date',
         ];
     }
 
@@ -88,6 +89,14 @@ class User extends Authenticatable
         return $this->role === Role::Director;
     }
 
+    /** Keeps the user's latest signature on their profile so the next form is pre-signed. */
+    public function rememberSignature(?string $signature): void
+    {
+        if ($signature && $this->signature !== $signature) {
+            $this->update(['signature' => $signature]);
+        }
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === Role::Admin;
@@ -97,6 +106,17 @@ class User extends Authenticatable
     public function isManagement(): bool
     {
         return $this->hasRole(Role::Manager, Role::Director);
+    }
+
+    public function isContractor(): bool
+    {
+        return $this->employment_type === 'contractor';
+    }
+
+    /** "Department / Position" as on the paper leave form. */
+    public function departmentPosition(): string
+    {
+        return collect([$this->department?->name, $this->job_title])->filter()->implode(' / ') ?: '—';
     }
 
     public function initials(): string

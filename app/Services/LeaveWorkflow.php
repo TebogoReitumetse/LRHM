@@ -18,6 +18,8 @@ use Illuminate\Validation\ValidationException;
  */
 class LeaveWorkflow
 {
+    public function __construct(private LeaveBalanceService $balances) {}
+
     public function submit(LeaveApplication $app): void
     {
         $this->guard($app, [LeaveStatus::Draft, LeaveStatus::ReturnedForInformation]);
@@ -27,6 +29,8 @@ class LeaveWorkflow
         DB::transaction(function () use ($app, $from, $resubmission) {
             $app->reference ??= $this->nextReference();
             $app->submitted_at ??= now();
+            // The balance may have changed since the draft was saved.
+            $app->unpaid_days = $this->balances->unpaidDaysFor($app->user, $app->category, (float) $app->working_days, $app->id);
 
             $reviewers = $this->managersFor($app);
             if ($reviewers->isEmpty()) {
@@ -44,6 +48,10 @@ class LeaveWorkflow
             $app->save();
             $app->logAction($resubmission ? 'resubmitted' : 'submitted', $from, LeaveStatus::Submitted);
             $this->notify($reviewers, $app, $resubmission ? 'resubmitted' : 'submitted');
+            if (! $resubmission) {
+                // Directors are told about every new application; they decide once the Manager forwards it.
+                $this->notify($this->directorsFor($app), $app, 'submitted_for_director');
+            }
         });
     }
 
@@ -63,13 +71,21 @@ class LeaveWorkflow
             'manager_id' => $manager->id,
             'return_reason' => $comment,
             'returned_at' => now(),
+            // The employee must sign the declaration again when resubmitting.
             'declaration_accepted' => false,
+            'declaration_accepted_at' => null,
+            'employee_signature' => null,
+            'employee_signed_on' => null,
         ]);
         $app->logAction('returned', $from, LeaveStatus::ReturnedForInformation, $comment);
         $this->notify(collect([$app->user]), $app, 'returned', $comment);
     }
 
-    public function forward(LeaveApplication $app, User $manager, string $recommendation, ?string $comment): void
+    /**
+     * The Manager signs the form's Manager/Owner Signature when forwarding it to the Director.
+     */
+    public function forward(LeaveApplication $app, User $manager, string $recommendation, ?string $comment,
+        ?string $signature = null, ?string $printName = null): void
     {
         $this->guard($app, [LeaveStatus::Submitted, LeaveStatus::UnderManagerReview]);
         $from = $app->status;
@@ -79,22 +95,36 @@ class LeaveWorkflow
             'manager_recommendation' => $recommendation,
             'manager_comment' => $comment,
             'manager_reviewed_at' => now(),
+            'approver_signature' => $signature,
+            'approver_name' => $signature ? ($printName ?: $manager->name) : null,
         ]);
         $label = $recommendation === 'approve' ? 'Recommends approval' : 'Does not recommend approval';
         $app->logAction('forwarded', $from, LeaveStatus::PendingDirectorApproval, trim($label.'. '.$comment));
         $this->notify($this->directorsFor($app), $app, 'forwarded', $comment);
     }
 
-    public function decide(LeaveApplication $app, User $director, bool $approve, ?string $comment): void
+    /**
+     * Office Use Only: Approved / Declined (reason). The Director signs the decision. The Manager/Owner
+     * signature is the Manager's, captured when forwarding; when no Manager signed, the Director's
+     * signature fills it as well.
+     */
+    public function decide(LeaveApplication $app, User $director, bool $approve, ?string $comment,
+        ?string $signature = null, ?string $printName = null): void
     {
         $this->guard($app, [LeaveStatus::PendingDirectorApproval]);
         $to = $approve ? LeaveStatus::Approved : LeaveStatus::Declined;
-        $app->update([
+        $attributes = [
             'status' => $to,
             'director_id' => $director->id,
             'director_comment' => $comment,
             'decided_at' => now(),
-        ]);
+            'director_signature' => $signature,
+        ];
+        if (! $app->approver_signature && $signature) {
+            $attributes['approver_signature'] = $signature;
+            $attributes['approver_name'] = $printName ?: $director->name;
+        }
+        $app->update($attributes);
         $app->logAction($approve ? 'approved' : 'declined', LeaveStatus::PendingDirectorApproval, $to, $comment);
         $this->notify(collect([$app->user]), $app, $approve ? 'approved' : 'declined', $comment);
         if ($app->manager && $app->manager->isNot($app->user)) {

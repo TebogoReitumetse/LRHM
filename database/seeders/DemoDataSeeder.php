@@ -73,8 +73,9 @@ class DemoDataSeeder extends Seeder
                 'employee_name' => $who->name, 'employee_number' => $who->employee_number,
                 'department' => $who->department?->name, 'job_title' => $who->job_title,
                 'start_date' => $start, 'end_date' => $end, 'return_date' => $cal->nextWorkingDay($end),
-                'working_days' => $cal->count($start, $end), 'reason' => $reason,
-                'declaration_accepted' => true, 'declaration_accepted_at' => now(), 'status' => LeaveStatus::Draft,
+                'working_days' => $cal->count($start, $end), 'id_number' => $who->id_number,
+                'reason' => $category === 'Other' ? null : $reason, 'other_leave_type' => $category === 'Other' ? $reason : null,
+                'declaration_accepted' => true, 'declaration_accepted_at' => now(), 'employee_signed_on' => today(), 'status' => LeaveStatus::Draft,
             ]);
             $app->logAction('created', null, LeaveStatus::Draft);
 
@@ -92,42 +93,54 @@ class DemoDataSeeder extends Seeder
 
         // Approved, currently on leave.
         $a = $submit($make($u['lerato'], 'Annual Leave', $wd($today->copy()->subDays(2)), $wd($next(4)), 'Family holiday.'));
-        $as($u['manager']); $wf->forward($a, $u['manager'], 'approve', 'Cover arranged with the dev team.');
-        $as($u['director']); $wf->decide($a->fresh(), $u['director'], true, 'Approved. Enjoy the break.');
+        $as($u['manager']);
+        $wf->forward($a, $u['manager'], 'approve', 'Cover arranged with the dev team.');
+        $as($u['director']);
+        $wf->decide($a->fresh(), $u['director'], true, 'Approved. Enjoy the break.');
 
         // Approved upcoming.
         $a = $submit($make($u['kabelo'], 'Annual Leave', $wd($next(14)), $wd($next(18))));
-        $as($u['manager']); $wf->startReview($a, $u['manager']); $wf->forward($a->fresh(), $u['manager'], 'approve', null);
-        $as($u['director']); $wf->decide($a->fresh(), $u['director'], true, null);
+        $as($u['manager']);
+        $wf->startReview($a, $u['manager']);
+        $wf->forward($a->fresh(), $u['manager'], 'approve', null);
+        $as($u['director']);
+        $wf->decide($a->fresh(), $u['director'], true, null);
 
         // Pending Director approval.
-        $a = $submit($make($u['ayesha'], 'Study Leave', $wd($next(21)), $wd($next(22)), 'Final examinations, CompTIA A+.'));
-        $as($u['manager']); $wf->forward($a, $u['manager'], 'approve', 'Exam timetable attached; support roster covered.');
+        $a = $submit($make($u['ayesha'], 'Other', $wd($next(21)), $wd($next(22)), 'Study leave (CompTIA A+ examinations)'));
+        $as($u['manager']);
+        $wf->forward($a, $u['manager'], 'approve', 'Exam timetable attached; support roster covered.');
 
         // Submitted, awaiting Manager.
         $submit($make($u['johan'], 'Family Responsibility Leave', $wd($next(3)), $wd($next(3)), 'Attending to a sick child.'));
 
         // Under Manager review.
         $a = $submit($make($u['nomsa'], 'Annual Leave', $wd($next(30)), $wd($next(39)), 'Travel to Durban.'));
-        $as($u['manager']); $wf->startReview($a, $u['manager']);
+        $as($u['manager']);
+        $wf->startReview($a, $u['manager']);
 
         // Returned for information.
         $a = $submit($make($u['kabelo'], 'Sick Leave', $wd($today->copy()->subDays(9)), $wd($today->copy()->subDays(8)), 'Flu.'));
-        $as($u['manager']); $wf->returnForInformation($a, $u['manager'], 'Please upload the medical certificate for these two days.');
+        $as($u['manager']);
+        $wf->returnForInformation($a, $u['manager'], 'Please upload the medical certificate for these two days.');
 
         // Declined.
         $a = $submit($make($u['lerato'], 'Unpaid Leave', $wd($next(45)), $wd($next(55)), 'Extended personal travel.'));
-        $as($u['manager']); $wf->forward($a, $u['manager'], 'decline', 'Overlaps with the client go-live; not recommended.');
-        $as($u['director']); $wf->decide($a->fresh(), $u['director'], false, 'Declined due to the project go-live. Please consider dates after the release.');
+        $as($u['manager']);
+        $wf->forward($a, $u['manager'], 'decline', 'Overlaps with the client go-live; not recommended.');
+        $as($u['director']);
+        $wf->decide($a->fresh(), $u['director'], false, 'Declined due to the project go-live. Please consider dates after the release.');
 
         // Historic approved leave for reports.
         foreach ([[$u['ayesha'], 'Annual Leave', 70], [$u['johan'], 'Sick Leave', 50], [$u['nomsa'], 'Annual Leave', 100], [$u['manager'], 'Annual Leave', 120]] as [$who, $c, $ago]) {
             $s = $wd($today->copy()->subDays($ago));
             $a = $submit($make($who, $c, $s, $wd($s->copy()->addDays(2)), $c === 'Sick Leave' ? 'Stomach bug.' : null));
             if ($a->status === LeaveStatus::Submitted) {
-                $as($u['manager']); $wf->forward($a, $u['manager'], 'approve', null);
+                $as($u['manager']);
+                $wf->forward($a, $u['manager'], 'approve', null);
             }
-            $as($u['director']); $wf->decide($a->fresh(), $u['director'], true, null);
+            $as($u['director']);
+            $wf->decide($a->fresh(), $u['director'], true, null);
         }
 
         // A private draft.

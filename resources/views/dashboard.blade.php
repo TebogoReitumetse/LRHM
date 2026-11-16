@@ -19,6 +19,8 @@
         </div>
     </div>
 
+    <x-holiday-calendar :months="$calendar['months']" :holidays="$calendar['holidays']" :upcoming="$calendar['upcoming']" class="mb-8" />
+
     @isset($stats)
         {{-- Management dashboard --}}
         <h2 class="mb-3 text-sm font-semibold tracking-wide text-gray-500 uppercase">Leave overview</h2>
@@ -50,7 +52,7 @@
                                         {{ collect(explode(' ', $a->employee_name))->map(fn ($p) => mb_substr($p, 0, 1))->take(2)->implode('') }}
                                     </div>
                                     <div class="min-w-0 flex-1">
-                                        <p class="truncate text-sm font-medium">{{ $a->employee_name }} <span class="font-normal text-gray-500">· {{ $a->category->name }}</span></p>
+                                        <p class="truncate text-sm font-medium">{{ $a->employee_name }} <span class="font-normal text-gray-500">· {{ $a->leaveTypeLabel() }}</span></p>
                                         <p class="text-xs text-gray-500">{{ $a->start_date->format('d M') }} – {{ $a->end_date->format('d M Y') }} · {{ (float) $a->working_days }} working days · submitted {{ $a->submitted_at?->diffForHumans() }}</p>
                                     </div>
                                     <x-status :status="$a->status" class="hidden sm:inline-flex" />
@@ -92,7 +94,7 @@
                             @foreach ($onLeave as $a)
                                 <tr class="cursor-pointer" onclick="location.href='{{ route('leave.show', $a) }}'">
                                     <td class="font-medium text-gray-900">{{ $a->employee_name }}<div class="text-xs font-normal text-gray-500">{{ $a->department }}</div></td>
-                                    <td>{{ $a->category->name }}</td>
+                                    <td>{{ $a->leaveTypeLabel() }}</td>
                                     <td class="whitespace-nowrap">{{ $a->end_date->format('d M') }}</td>
                                     <td class="whitespace-nowrap font-semibold text-accent-700">{{ $a->return_date->format('D d M') }}</td>
                                 </tr>
@@ -115,7 +117,7 @@
                             @foreach ($upcoming as $a)
                                 <tr class="cursor-pointer" onclick="location.href='{{ route('leave.show', $a) }}'">
                                     <td class="font-medium text-gray-900">{{ $a->employee_name }}</td>
-                                    <td>{{ $a->category->name }}</td>
+                                    <td>{{ $a->leaveTypeLabel() }}</td>
                                     <td class="whitespace-nowrap">{{ $a->start_date->format('d M') }} – {{ $a->end_date->format('d M') }}</td>
                                     <td class="whitespace-nowrap">{{ $a->return_date->format('d M') }}</td>
                                 </tr>
@@ -150,6 +152,21 @@
 
     {{-- Personal section --}}
     @unless ($user->isAdmin())
+        <div class="mt-10 mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-sm font-semibold tracking-wide text-gray-500 uppercase">My leave balances</h2>
+            <p class="text-xs text-gray-400">Working days · minimums under the Basic Conditions of Employment Act</p>
+        </div>
+        @if ($myBalances->isEmpty())
+            <div class="card p-5 text-sm text-gray-500">No leave entitlements apply to your account. Days you take will still appear under My leave.</div>
+        @else
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                @foreach ($myBalances as $b)
+                    <x-leave-balance-card :balance="$b" />
+                @endforeach
+            </div>
+        @endif
+        <x-bcea-leave-info />
+
         <h2 class="mt-10 mb-3 text-sm font-semibold tracking-wide text-gray-500 uppercase">My leave</h2>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-1 lg:grid-cols-1">
@@ -181,7 +198,7 @@
                             <li>
                                 <a href="{{ route('leave.show', $a) }}" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 hover:bg-brand-50/40">
                                     <div class="min-w-0 flex-1">
-                                        <p class="text-sm font-medium">{{ $a->category->name }} <span class="font-normal text-gray-400">{{ $a->reference ?? 'Draft' }}</span></p>
+                                        <p class="text-sm font-medium">{{ $a->leaveTypeLabel() }} <span class="font-normal text-gray-400">{{ $a->reference ?? 'Draft' }}</span></p>
                                         <p class="text-xs text-gray-500">{{ $a->start_date->format('d M') }} – {{ $a->end_date->format('d M Y') }} · {{ (float) $a->working_days }} working days</p>
                                     </div>
                                     <x-status :status="$a->status" />

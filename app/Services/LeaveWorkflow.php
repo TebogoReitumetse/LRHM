@@ -143,11 +143,24 @@ class LeaveWorkflow
         return User::active()->withRole(Role::Director)->whereKeyNot($app->user_id)->get();
     }
 
+    /**
+     * Sends the in-system notification and email to each user. A failing mail server is reported
+     * but never blocks the workflow step, and one bad address does not stop the other recipients.
+     */
     private function notify(Collection $users, LeaveApplication $app, string $event, ?string $comment = null): void
     {
         $users = $users->filter();
-        if ($users->isNotEmpty()) {
-            Notification::send($users, new LeaveApplicationNotification($app->fresh(['category', 'user']), $event, $comment));
+        if ($users->isEmpty()) {
+            return;
+        }
+
+        $notification = new LeaveApplicationNotification($app->fresh(['category', 'user', 'manager', 'director']), $event, $comment);
+        foreach ($users as $user) {
+            try {
+                Notification::send($user, $notification);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 

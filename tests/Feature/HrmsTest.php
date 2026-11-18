@@ -178,6 +178,21 @@ class HrmsTest extends TestCase
         $this->assertLeaveEmailSent($emp, 'approved');
     }
 
+    public function test_leave_workflow_continues_when_the_mail_server_fails(): void
+    {
+        config(['mail.mailers.array.transport' => 'smtp', 'mail.mailers.array.host' => '127.0.0.1', 'mail.mailers.array.port' => 1]);
+        $emp = $this->user('ayesha');
+        $annual = LeaveCategory::where('name', 'Annual Leave')->first();
+
+        $this->actingAs($emp)->post(route('leave.store'), [
+            'leave_category_id' => $annual->id, 'start_date' => '2027-03-01', 'end_date' => '2027-03-02',
+            'return_date' => '2027-03-03', 'employee_signature' => self::SIG, 'action' => 'submit',
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $this->assertSame(LeaveStatus::Submitted, LeaveApplication::where('user_id', $emp->id)->latest('id')->first()->status);
+        $this->assertTrue($this->user('manager')->unreadNotifications()->exists());
+    }
+
     public function test_signatures_are_saved_for_reuse(): void
     {
         $emp = $this->user('lerato');
@@ -208,6 +223,21 @@ class HrmsTest extends TestCase
         $this->assertSame($directorSig, $app->fresh()->director_signature);
         $this->assertSame($managerSig, $app->fresh()->approver_signature);
         $this->assertSame($directorSig, $director->fresh()->signature);
+
+        // Manager is emailed on submission, Director on forwarding, and both employee and Manager on approval.
+        $this->assertLeaveEmailSent($manager, 'submitted');
+        $this->assertLeaveEmailSent($director, 'forwarded');
+        $this->assertLeaveEmailSent($emp, 'approved');
+        $this->assertLeaveEmailSent($manager, 'decided');
+
+        // The approval emails are branded and tell each recipient what happened.
+        $employeeEmail = (new LeaveApplicationNotification($app->fresh(), 'approved', 'Enjoy'))->toMail($emp)->render();
+        $this->assertStringContainsString('Your leave has been approved', $employeeEmail);
+        $this->assertStringContainsString($app->reference, $employeeEmail);
+        $this->assertMatchesRegularExpression('/<img src="(data:image\/png|cid:)[^"]+"[^>]*alt="LivityICT"/', $employeeEmail);
+        $this->assertStringContainsString('Enjoy', $employeeEmail);
+        $managerEmail = (new LeaveApplicationNotification($app->fresh(), 'decided'))->toMail($manager)->render();
+        $this->assertStringContainsString("approved {$app->employee_name}", html_entity_decode($managerEmail, ENT_QUOTES));
 
         // The saved signature pre-fills the next form and can be removed from the profile.
         $this->actingAs($emp)->get(route('leave.create'))->assertOk()->assertSee(substr(self::SIG, 22), false);
